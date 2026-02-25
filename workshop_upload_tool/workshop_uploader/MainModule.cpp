@@ -810,10 +810,13 @@ void MainModule::HandleUGCPagination(const vector<SteamUGCDetails_t>& items)
 
 	while (!g_bUserInterrupted)
 	{
-		PrintPaginationControls();
-
 		string strInput;
-		RequestString(LOC_UPC_ENTER_KEY, strInput);
+
+		if (m_TotalUGCPages > 1)
+		{
+			PrintPaginationControls();
+			RequestString(LOC_UPC_ENTER_KEY, strInput);
+		}
 
 		if (g_bUserInterrupted)
 			return;
@@ -927,6 +930,8 @@ void MainModule::OnPublishedItemsQueryCompleted(SteamUGCQueryCompleted_t* pResul
 
 	if (numResults == 0)
 		WarningMessage(LOC_NO_PUBLISHED_ITEMS);
-	else
+	else if (m_TotalUGCPages > 1)
 		HandleUGCPagination(publishedItems);
+	else
+		PromptUserToSelectItem(publishedItems);
 }
