@@ -120,6 +120,7 @@ public:
 	//state handling
 	void	RefreshInstallerState(); //refresh workshop item info, their states, etc.
 	void	MarkInstallationBroken(uint64 itemId, bool bIsBroken); //flags item as broken/needs reinstall
+	String^ FormatItemState(uint32 state);
 	
 	bool	AllWorkshopItemsResolved();
 
@@ -131,8 +132,6 @@ public:
 
 	CWorkshopItem* FindWorkshopItem(uint64 itemId); //find item by itemId
 	void RemoveWorkshopItemByPtr(CWorkshopItem* item); //safely remove item from m_vecWorkshopItems
-	bool IsItemMarkedOverwritten(uint64 itemId, bool bShowReport = false); //tells the UI that this item should be marked as overwritten by other items
-	bool IsItemOverwrittenByOwnership(uint64 itemId, HashSet<String^>^ installedFiles, Dictionary<String^, UInt64>^ fileOwners); //determines whether any installed file of this item is currently owned by another item
 
 	void	QueryWorkshopState(); //request what items have been downloaded by Steam and ready for processing, request previously installed items
 
@@ -161,6 +160,8 @@ public:
 	//file conflict handling
 	Dictionary<String^, uint64>^ BuildFileOwnerMap(); //tells us which workshop item currently owns which installed file
 	bool ResolveInstallOverwrites(uint64 itemId, List<String^>^ candidateFiles, HashSet<String^>^% outOverwrittenItemIds);
+	bool IsItemMarkedOverwritten(uint64 itemId, bool bShowReport = false); //tells the UI that this item should be marked as overwritten by other items
+	bool IsItemOverwrittenByOwnership(uint64 itemId, HashSet<String^>^ installedFiles, Dictionary<String^, UInt64>^ fileOwners); //determines whether any installed file of this item is currently owned by another item
 
 	//messages, prompts
 	void	ErrorMessage(String^ message);

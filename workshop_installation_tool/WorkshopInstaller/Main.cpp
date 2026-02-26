@@ -229,6 +229,37 @@ void CMainModule::MarkInstallationBroken(uint64 itemId, bool bIsBroken)
 		UIState::NeedsFullUpdate = true;
 }
 
+String^ CMainModule::FormatItemState(uint32 state)
+{
+	if (state == k_EItemStateNone)
+		return "k_EItemStateNone";
+
+	List<String^>^ flags = gcnew List<String^>();
+
+	if (state & k_EItemStateSubscribed)
+		flags->Add("k_EItemStateSubscribed");
+
+	if (state & k_EItemStateLegacyItem)
+		flags->Add("k_EItemStateLegacyItem");
+
+	if (state & k_EItemStateInstalled)
+		flags->Add("k_EItemStateInstalled");
+
+	if (state & k_EItemStateNeedsUpdate)
+		flags->Add("k_EItemStateNeedsUpdate");
+
+	if (state & k_EItemStateDownloading)
+		flags->Add("k_EItemStateDownloading");
+
+	if (state & k_EItemStateDownloadPending)
+		flags->Add("k_EItemStateDownloadPending");
+
+	if (state & k_EItemStateDisabledLocally)
+		flags->Add("k_EItemStateDisabledLocally");
+
+	return String::Join(" | ", flags);
+}
+
 String^ CMainModule::GetSteamPath()
 {
 	auto IsValidSteamRoot = [](String^ path) -> bool
@@ -527,7 +558,13 @@ String^ CMainModule::GetItemCachePath(CWorkshopItem* item)
 	if (!item)
 		return nullptr;
 
-	return gcnew String(item->GetInstallDir());
+	char installDir[MAX_PATH] = {};
+	bool bInstallDirExists = item->TryGetInstallDir(installDir, sizeof(installDir));
+
+	if (!bInstallDirExists)
+		return nullptr;
+
+	return gcnew String(installDir);
 }
 
 List<String^>^ CMainModule::GetFilesToInstall(uint64 itemId, FileCollectMode collectMode)
@@ -1031,65 +1068,40 @@ void CMainModule::QueryWorkshopState()
 		else
 			item->m_bIsInstalled = false;
 
-		item->m_bIsDownloaded = true;
-
 		uint64 itemId = item->GetItemId();
 		uint32 state = SteamUGC()->GetItemState(itemId);
 
-		DebugLog("QueryWorkshopState() itemId: " + itemId);
+		//subscription
+		item->m_bIsSubscribed = (state & k_EItemStateSubscribed) != 0;
 
-		if (state == 0)
-			DebugLog("   state: k_EItemStateNone");
+		//download readiness
+		item->m_bIsDownloaded = (state & k_EItemStateInstalled) != 0;
 
-		if (state & k_EItemStateSubscribed)
-		{
-			item->m_bIsSubscribed = true;
-			DebugLog("   state: k_EItemStateSubscribed");
-		}
-
-		if (state & k_EItemStateLegacyItem)
-			DebugLog("   state: k_EItemStateLegacyItem");
-
-		if (state & k_EItemStateInstalled)
-			DebugLog("   state: k_EItemStateInstalled");
-
-		if (state & k_EItemStateNeedsUpdate) //Steam believes the local workshop cache is not in a usable state yet
+		//if downloading or needs update, it is NOT downloaded
+		if (state &
+			(k_EItemStateNeedsUpdate | k_EItemStateDownloading | k_EItemStateDownloadPending))
 		{
 			item->m_bIsDownloaded = false;
-			DebugLog("   state: k_EItemStateNeedsUpdate");
 		}
 
-		if (state & k_EItemStateDownloading)
-		{
-			item->m_bIsDownloaded = false;
-			DebugLog("   state: k_EItemStateDownloading");
-		}
-
-		if (state & k_EItemStateDownloadPending)
-		{
-			item->m_bIsDownloaded = false;
-			DebugLog("   state: k_EItemStateDownloadPending");
-		}
-
-		if (state & k_EItemStateDisabledLocally)
-			DebugLog("   state: k_EItemStateDisabledLocally");
-
-		if (state & k_EItemStateInstalled)
+		//metadata
+		if (item->m_bIsSubscribed || item->m_bIsInstalled)
 		{
 			item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Requesting;
 
-			SteamAPICall_t steamApiCall = SteamUGC()->RequestUGCDetails(itemId, ITEM_CACHE_LIMIT);
-			item->m_SteamCallResult.Set(steamApiCall, item.get(), &CWorkshopItem::OnUGCDetails);
+			SteamAPICall_t call = SteamUGC()->RequestUGCDetails(itemId, ITEM_CACHE_LIMIT);
+
+			item->m_SteamCallResult.Set(call, item.get(), &CWorkshopItem::OnUGCDetails);
 		}
-		else //this branch tells us that the item is not fully cached by Steam yet
+		else
 		{
-			if (item->m_bIsSubscribed)
-				item->m_bIsDownloaded = false;
-
-			item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Completed; //no metadata will be requested
+			item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Completed;
 		}
 
+		DebugLog("   itemId: " + itemId);
+		DebugLog("   state:" + FormatItemState(state));
 		DebugLog("");
+
 		m_vecWorkshopItems.push_back(move(item));
 	}
 
@@ -1394,7 +1406,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 
 	if (bIsEmpty)
 	{
-		WarningMessage(gcnew String(LOC_INSTALL_SRC_PATH_EMPTY));
+		WarningMessage(String::Format(gcnew String(LOC_INSTALL_SRC_PATH_EMPTY), srcPath));
 		return false;
 	}
 
@@ -2413,40 +2425,40 @@ void CMainModule::OnWorkshopItemDownloaded(DownloadItemResult_t* pResult)
 	if (!item)
 		return; //unknown or stale
 
-	DebugLog("DownloadItemResult: " + itemId);
-
-	item->m_bDownloadInProgress = false;
+	DebugLog("OnWorkshopItemDownloaded() BEGIN");
+	DebugLog("   DownloadItemResult: " + itemId);
 
 	//Steam-level failure
 	if (pResult->m_eResult != k_EResultOK)
 	{
-		DebugLog("Download failed, result = " + Convert::ToString(pResult->m_eResult));
+		DebugLog("   download failed, result = " + Convert::ToString(pResult->m_eResult));
 
 		item->m_bIsDownloaded = false;
-		item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Failed;
+		item->m_bDownloadInProgress = false;
 		
 		UIState::NeedsActionButtonUpdate = true;
 		return;
 	}
 
 	uint32 state = SteamUGC()->GetItemState(itemId);
+	DebugLog("   post-download state: " + FormatItemState(state));
 
-	if (state & k_EItemStateInstalled)
-	{
-		item->m_bIsDownloaded = true;
+	//download progress flags
+	item->m_bDownloadInProgress = (state & k_EItemStateDownloading) || (state & k_EItemStateDownloadPending);
 
-		//mark as ready
-		if (item->m_LoadState == CWorkshopItem::WorkshopItemLoadState::Requesting)
-			item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Completed;
-	}
-	else
-	{
-		//Steam finished but cache unusable
+	//download readiness
+	item->m_bIsDownloaded = (state & k_EItemStateInstalled) != 0;
+
+	//if Steam still reports NeedsUpdate, treat as not ready
+	if (state & k_EItemStateNeedsUpdate)
 		item->m_bIsDownloaded = false;
-		item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Failed;
-	}
+
+	//only update metadata load state if it was waiting
+	if (item->m_LoadState == CWorkshopItem::WorkshopItemLoadState::Requesting)
+		item->m_LoadState = CWorkshopItem::WorkshopItemLoadState::Completed;
 
 	UIState::NeedsActionButtonUpdate = true;
+	DebugLog("OnWorkshopItemDownloaded() END");
 }
 
 void CMainModule::Shutdown()
@@ -2491,19 +2503,24 @@ void CMainModule::DumpWorkshopItemsInfo()
 
 	for (auto& item : m_vecWorkshopItems)
 	{
+		String^ itemCachePath = GetItemCachePath(item.get());
+
+		if (String::IsNullOrEmpty(itemCachePath))
+			itemCachePath = "<not installed>";
+
 		DebugLog(String::Format(
 				"ItemId: {0}\n"
 				"Title: {1}\n"
 				"Description: {2}\n"
 				"AuthorID: {3}\n"
 				"Size: ({4:F3} MB)\n"
-				"InstallDir: {5}\n",
+				"GetItemCachePath(): {5}\n",
 				UInt64(item->GetItemId()),
 				gcnew String(item->GetTitle()),
 				gcnew String(item->GetDescription()),
 				item->GetAuthorID(),
 				item->GetSizeInMegabytes(),
-				gcnew String(item->GetInstallDir())
+				itemCachePath
 			));
 
 		DebugLog(String::Format("Installed: {0}", item->m_bIsInstalled ? "true" : "false"));

@@ -27,7 +27,6 @@ public:
 	void SetAuthorID(uint64 id);
 	void SetSize(int32 size);
 
-	void SetInstallDir(const char* c);
 	void SetSizeOnDisk(uint64 size);
 	void SetTimeStamp(int32 time);
 
@@ -41,12 +40,13 @@ public:
 	int32 GetTimeUpdated(); //server update time
 	WorkshopItemLoadState GetLoadState();
 
+	bool TryGetInstallDir(char* outBuffer, size_t bufferSize);
+
 	bool IsLoaded();
 	bool IsUpToDate();
 	bool ForceDownload();
 
 #ifdef USE_STEAM_INSTALL_INFO
-	char* GetInstallDir();
 	uint64 GetSizeOnDisk();
 	int32 GetTimeStamp(); //local installation update time
 
@@ -79,7 +79,6 @@ private:
 	char* m_pchDescription_broken;
 
 #ifdef USE_STEAM_INSTALL_INFO
-	char* m_pchInstallDir;
 	uint64 m_u64SizeOnDisk;
 	int32 m_n32TimeStamp;
 #endif

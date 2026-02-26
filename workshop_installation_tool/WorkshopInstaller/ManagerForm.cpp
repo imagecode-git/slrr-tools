@@ -488,18 +488,24 @@ void ManagerForm::DataGridView_ColumnHeaderMouseClick(
 ActionButtonState ManagerForm::ResolveActionButtonState(UInt64 itemId)
 {
 	CWorkshopItem* item = MAIN->FindWorkshopItem(itemId);
-
 	if (!item)
 		return ActionButtonState::Disabled;
 
-	if (item->m_bIsBroken)
-		return ActionButtonState::Removable;
+	uint32 state = SteamUGC()->GetItemState(itemId);
 
-	if (item->m_bDownloadInProgress)
+	bool bIsSubscribed = (state & k_EItemStateSubscribed) != 0;
+	bool bIsDownloading = (state & k_EItemStateDownloading) != 0;
+	bool bIsPending = (state & k_EItemStateDownloadPending) != 0;
+	bool bIsSteamInstalled = (state & k_EItemStateInstalled) != 0;
+
+	if (!bIsSubscribed)
+		return ActionButtonState::Disabled;
+
+	if (bIsDownloading || bIsPending)
 		return ActionButtonState::Downloading;
 
-	if (item->m_bIsDownloaded && !item->m_bIsInstalled)
-		return ActionButtonState::Installable;
+	if (!bIsSteamInstalled)
+		return ActionButtonState::Downloading;
 
 	if (item->m_bIsInstalled)
 		return ActionButtonState::Removable;

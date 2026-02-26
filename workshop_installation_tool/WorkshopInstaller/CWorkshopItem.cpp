@@ -19,7 +19,6 @@ CWorkshopItem::CWorkshopItem()
 	SetDescription(LOC_DEFAULT_ITEM_DESC);
 
 #ifdef USE_STEAM_INSTALL_INFO
-	m_pchInstallDir = NULL;
 	SetSizeOnDisk(0);
 	SetTimeStamp(0);
 #endif
@@ -92,20 +91,6 @@ void CWorkshopItem::SetSize(int32 size)
 }
 
 #ifdef USE_STEAM_INSTALL_INFO
-void CWorkshopItem::SetInstallDir(const char* c)
-{
-	if (!c)
-		return;
-
-	if (m_pchInstallDir)
-	{
-		delete[] m_pchInstallDir;
-		m_pchInstallDir = NULL;
-	}
-
-	m_pchInstallDir = CopyString(c);
-}
-
 void CWorkshopItem::SetSizeOnDisk(uint64 size)
 {
 	m_u64SizeOnDisk = size;
@@ -200,11 +185,6 @@ bool CWorkshopItem::IsUpToDate()
 }
 
 #ifdef USE_STEAM_INSTALL_INFO
-char* CWorkshopItem::GetInstallDir()
-{
-	return m_pchInstallDir;
-}
-
 uint64 CWorkshopItem::GetSizeOnDisk()
 {
 	return m_u64SizeOnDisk;
@@ -213,6 +193,28 @@ uint64 CWorkshopItem::GetSizeOnDisk()
 int32 CWorkshopItem::GetTimeStamp()
 {
 	return m_n32TimeStamp;
+}
+
+bool CWorkshopItem::TryGetInstallDir(char* outBuffer, size_t bufferSize)
+{
+	if (!outBuffer || bufferSize == 0)
+		return false;
+
+	uint64 sizeOnDisk = 0;
+	uint32 timeStamp = 0;
+
+	bool bInstallInfoOk = SteamUGC()->GetItemInstallInfo(
+		GetItemId(),
+		&sizeOnDisk,
+		outBuffer,
+		(uint32)bufferSize,
+		&timeStamp
+	);
+
+	if (!bInstallInfoOk || outBuffer[0] == '\0')
+		return false;
+
+	return true;
 }
 
 bool CWorkshopItem::UpdateUGCInstallInfo()
@@ -233,7 +235,6 @@ bool CWorkshopItem::UpdateUGCInstallInfo()
 	{
 		SetSizeOnDisk(sizeOnDisk);
 		SetTimeStamp((int32)timeStamp);
-		SetInstallDir(installDir);
 	}
 
 	return bResult;
@@ -290,10 +291,6 @@ void CWorkshopItem::OnUGCDetails(SteamUGCRequestUGCDetailsResult_t* pResult, boo
 		SetItemId(itemId);
 		SetAuthorID(pResult->m_details.m_ulSteamIDOwner);
 		SetSize(pResult->m_details.m_nFileSize);
-
-#ifdef USE_STEAM_INSTALL_INFO
-		UpdateUGCInstallInfo();
-#endif
 
 		m_n32TimeUpdated = pResult->m_details.m_rtimeUpdated;
 
