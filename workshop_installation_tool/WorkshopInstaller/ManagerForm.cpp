@@ -498,17 +498,20 @@ ActionButtonState ManagerForm::ResolveActionButtonState(UInt64 itemId)
 	bool bIsPending = (state & k_EItemStateDownloadPending) != 0;
 	bool bIsSteamInstalled = (state & k_EItemStateInstalled) != 0;
 
+	//removal always allowed if installed into game
+	if (item->m_bIsInstalled)
+		return ActionButtonState::Removable;
+
+	//not subscribed and not installed -> nothing to do
 	if (!bIsSubscribed)
 		return ActionButtonState::Disabled;
 
+	//Steam still downloading
 	if (bIsDownloading || bIsPending)
 		return ActionButtonState::Downloading;
 
 	if (!bIsSteamInstalled)
 		return ActionButtonState::Downloading;
-
-	if (item->m_bIsInstalled)
-		return ActionButtonState::Removable;
 
 	return ActionButtonState::Installable;
 }
