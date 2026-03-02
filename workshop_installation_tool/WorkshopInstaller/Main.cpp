@@ -13,10 +13,16 @@
 //todo: currently v140 runtime is required. how many users have it? any way to avoid v140 runtime error on launch?
 
 //todo: "offline mode" that allows to cache/install items from the workshop cache folder
+
+//CHECK:
+//if user uses only g_UseFictiveClassFiles or only g_UseFictiveJavaFiles (i.e. not both at once), will the logic break?
+
 #include "Main.h"
 
 bool g_EnableOverwrittenColumn;
 bool g_PromptUserOnManageItem;
+bool g_UseFictiveJavaFiles;
+bool g_UseFictiveClassFiles;
 
 CMainModule* CMainModule::m_ModuleInstance = 0;
 [STAThreadAttribute]
@@ -742,9 +748,10 @@ HashSet<String^>^ CMainModule::GetInstalledFiles(uint64 itemId)
 	return result;
 }
 
-Dictionary<String^, uint64>^ CMainModule::BuildFileOwnerMap()
+Dictionary<String^, List<uint64>^>^ CMainModule::BuildFileOwnerMap()
 {
-	auto ownersDict = gcnew Dictionary<String^, uint64>(StringComparer::OrdinalIgnoreCase);
+	auto ownersDict =
+		gcnew Dictionary<String^, List<uint64>^>(StringComparer::OrdinalIgnoreCase);
 
 	String^ gamePath = GetGamePath();
 
@@ -755,146 +762,179 @@ Dictionary<String^, uint64>^ CMainModule::BuildFileOwnerMap()
 			continue;
 
 		CWorkshopItem* item = FindWorkshopItem(itemId);
-		if (!item || item->m_bIsBroken || !item->m_bIsInstalled) //ignore broken items, they own nothing
+		if (!item || item->m_bIsBroken || !item->m_bIsInstalled)
 			continue;
 
 		auto filesSet = GetInstalledFiles(itemId);
+
 		for each (String^ relPath in filesSet)
 		{
-			if (String::IsNullOrWhiteSpace(relPath))
+			String^ normPath = relPath->Trim()->ToLowerInvariant();
+			normPath = normPath->Replace("/", "\\");
+
+			if (String::IsNullOrWhiteSpace(normPath))
 				continue;
 
-			//ignore backups
-			if (IsBakFile(relPath) || IsInsideBakDir(relPath))
+			if (IsBakFile(normPath) || IsInsideBakDir(normPath))
 				continue;
 
-			String^ fullPath = Path::Combine(gamePath, relPath);
-			if (!File::Exists(fullPath))
-				continue;
+			if (!ownersDict->ContainsKey(normPath))
+				ownersDict[normPath] = gcnew List<uint64>();
 
-			ownersDict[relPath] = itemId; //last writer wins
+			if (!ownersDict[normPath]->Contains(itemId))
+				ownersDict[normPath]->Add(itemId);
 		}
 	}
 
 	bool bDumpDict = false;
+
 	if (bDumpDict)
 	{
-		DebugLog("---- fileOwner dump BEGIN ----");
+		DebugLog("---- fileOwnerMulti dump BEGIN ----");
+
 		for each (auto kv in ownersDict)
-			DebugLog("  " + kv.Key + " -> " + kv.Value);
-		DebugLog("---- fileOwner dump END ----");
+		{
+			String^ filePath = kv.Key;
+			List<uint64>^ owners = kv.Value;
+
+			StringBuilder^ line = gcnew StringBuilder();
+			line->Append(filePath);
+			line->Append(" -> ");
+
+			for (int i = 0; i < owners->Count; ++i)
+			{
+				line->Append(owners[i]);
+
+				if (i < owners->Count - 1)
+					line->Append(", ");
+			}
+
+			DebugLog(line->ToString());
+		}
+
+		DebugLog("---- fileOwnerMulti dump END ----");
 	}
 
 	return ownersDict;
 }
 
-bool CMainModule::ResolveInstallOverwrites(uint64 itemId, List<String^>^ candidateFiles, HashSet<String^>^% outOverwrittenItemIds)
+bool CMainModule::CheckFileConflicts(uint64 itemId, List<String^>^ candidateFiles)
 {
-	DebugLog("ResolveInstallOverwrites()");
-	DebugLog("   candidateFiles:");
-
-	for each (String ^ candidate in candidateFiles)
-		DebugLog("   " + candidate);
-
-	DebugLog("");
-
-	outOverwrittenItemIds =
-		gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
-
-	//build authoritative ownership map
-	Dictionary<String^, UInt64>^ fileOwners =
-		BuildFileOwnerMap();
-
-	//file -> owners for UI grouping
-	Dictionary<UInt64, List<String^>^>^ overwrittenItems =
-		gcnew Dictionary<UInt64, List<String^>^>();
-
-	Dictionary<String^, List<String^>^>^ conflictedFilesByItem =
-		gcnew Dictionary<String^, List<String^>^>(StringComparer::OrdinalIgnoreCase);
-
-	for each (String ^ relPath in candidateFiles)
-	{
-		UInt64 ownerId = 0;
-		bool bHasKnownOwner = fileOwners->TryGetValue(relPath, ownerId);
-
-		//self-overwrite is not a conflict
-		if (bHasKnownOwner && ownerId == itemId)
-			continue;
-
-		if (!bHasKnownOwner)
-		{
-			String^ fullPath = Path::Combine(GetGamePath(), relPath);
-
-			if (!File::Exists(fullPath))
-				continue; //truly irrelevant
-
-			if (ownerId == 0)
-				continue; //currently overwriting vanilla game files is not a conflict
-		}
-
-		outOverwrittenItemIds->Add(ownerId.ToString());
-
-		if (!overwrittenItems->ContainsKey(ownerId))
-			overwrittenItems[ownerId] = gcnew List<String^>();
-
-		overwrittenItems[ownerId]->Add(relPath);
-	}
-
-	if (outOverwrittenItemIds->Count == 0)
+	if (!candidateFiles || candidateFiles->Count == 0)
 		return true;
 
-	StringBuilder^ conflictMsg = gcnew StringBuilder();
-	conflictMsg->AppendLine(LOC_INSTALL_CONFLICT);
-	conflictMsg->AppendLine();
+	//build authoritative ownership map once
+	Dictionary<String^, List<UInt64>^>^ fileOwners = BuildFileOwnerMap();
 
-	for each (auto kv in overwrittenItems)
+	//ownerId -> list of conflicting files
+	Dictionary<String^, HashSet<UInt64>^>^ fileConflicts =
+		gcnew Dictionary<String^, HashSet<UInt64>^>(StringComparer::OrdinalIgnoreCase);
+
+	for each (String^ relPath in candidateFiles)
 	{
-		uint64 otherId = kv.Key;
-		CWorkshopItem* otherItem = FindWorkshopItem(otherId);
+		if (String::IsNullOrWhiteSpace(relPath))
+			continue;
 
-		String^ title =
-			otherItem ? gcnew String(otherItem->GetTitle()) : "";
+		String^ displayPath = relPath; //path displayed in the UI
+		String^ normalizedPath = relPath->Trim()->ToLowerInvariant();
+		normalizedPath = normalizedPath->Replace("/", "\\");
 
-		conflictMsg->AppendLine(kv.Key + " " + title);
+		// -----------------------------
+		// 1. Exact file conflict
+		// -----------------------------
+		List<UInt64>^ owners;
+		if (fileOwners->TryGetValue(normalizedPath, owners))
+		{
+			for each (UInt64 ownerId in owners)
+			{
+				if (ownerId == itemId)
+					continue;
 
-		for each (String ^ file in kv.Value)
-			conflictMsg->AppendLine("  " + file);
+				if (!fileConflicts->ContainsKey(displayPath))
+					fileConflicts[displayPath] = gcnew HashSet<UInt64>();
 
-		conflictMsg->AppendLine();
+				fileConflicts[displayPath]->Add(ownerId);
+			}
+		}
+
+		// -----------------------------
+		// 2. JVM counterpart conflict
+		// -----------------------------
+		String^ counterpartLookup = GetJvmCounterpart(normalizedPath);
+
+		if (counterpartLookup != nullptr)
+		{
+			String^ counterpartNormalized = counterpartLookup->Trim()->ToLowerInvariant();
+			counterpartNormalized = counterpartNormalized->Replace("/", "\\");
+
+			if (fileOwners->TryGetValue(counterpartNormalized, owners))
+			{
+				String^ counterpartDisplay = GetJvmCounterpart(displayPath);
+				if (String::IsNullOrWhiteSpace(counterpartDisplay))
+					counterpartDisplay = counterpartLookup; //prevents a null dictionary key crash
+
+				for each (UInt64 ownerId in owners)
+				{
+					if (ownerId == itemId)
+						continue;
+
+					if (!fileConflicts->ContainsKey(counterpartDisplay))
+						fileConflicts[counterpartDisplay] = gcnew HashSet<UInt64>();
+
+					fileConflicts[counterpartDisplay]->Add(ownerId);
+				}
+			}
+		}
 	}
 
-	for each (auto kv in conflictedFilesByItem)
+	if (fileConflicts->Count == 0)
+		return true;
+
+	//build message
+	StringBuilder^ msg = gcnew StringBuilder();
+	msg->AppendLine(LOC_INSTALL_CONFLICT);
+	msg->AppendLine();
+
+	for each (auto kv in fileConflicts)
 	{
-		uint64 otherId = ItemIdFromString(kv.Key);
-		CWorkshopItem* otherItem = FindWorkshopItem(otherId);
+		String^ filePath = kv.Key;
+		HashSet<UInt64>^ owners = kv.Value;
 
-		String^ otherTitle =
-			otherItem ? gcnew String(otherItem->GetTitle()) : "";
+		msg->AppendLine(filePath);
 
-		conflictMsg->AppendLine(kv.Key + " " + otherTitle);
+		for each (UInt64 otherId in owners)
+		{
+			CWorkshopItem* otherItem = FindWorkshopItem(otherId);
+			String^ title = otherItem ? gcnew String(otherItem->GetTitle()) : "";
 
-		for each (String ^ relFile in kv.Value)
-			conflictMsg->AppendLine("  " + relFile);
+			msg->AppendLine("  " + otherId + " " + title);
+		}
 
-		conflictMsg->AppendLine();
+		msg->AppendLine();
 	}
 
-	DialogForm^ dialogForm = gcnew DialogForm();
+	DialogForm^ dialog = gcnew DialogForm();
 	try
 	{
-		dialogForm->SetButtonLayout(DialogButtons::OKCancel);
-		dialogForm->SetHeading(LOC_CONFLICT_FILES_INSTALL);
-		dialogForm->SetDescription(conflictMsg->ToString());
-		dialogForm->SetFooter(LOC_CONFLICT_CONTINUE);
+		dialog->SetButtonLayout(DialogButtons::OKCancel);
+		dialog->SetHeading(LOC_CONFLICT_FILES_INSTALL);
+		dialog->SetDescription(msg->ToString());
+		dialog->SetFooter(LOC_CONFLICT_CONTINUE_RW);
 
-		return dialogForm->ShowDialog() == DialogResult::OK;
+		return dialog->ShowDialog() == DialogResult::OK;
 	}
 	finally
 	{
-		delete dialogForm;
+		delete dialog;
 	}
+}
 
-	return false;
+bool CMainModule::IsItemOverwrittenByAnotherItem(uint64 itemId)
+{
+	String^ strItemId = Convert::ToString((long long)itemId, 10);
+	String^ strFileC = Path::Combine(UNINSTALL_MASK, "c", strItemId);
+
+	return File::Exists(strFileC) && (gcnew FileInfo(strFileC))->Length > 0;
 }
 
 bool CMainModule::IsItemMarkedOverwritten(uint64 itemId, bool bShowReport)
@@ -912,36 +952,54 @@ bool CMainModule::IsItemMarkedOverwritten(uint64 itemId, bool bShowReport)
 		return false;
 
 	//current authoritative ownership
-	Dictionary<String^, UInt64>^ fileOwners = BuildFileOwnerMap();
+	Dictionary<String^, List<UInt64>^>^ fileOwners = BuildFileOwnerMap();
+
+	//group: otherItemId -> list of files overwritten
+	Dictionary<UInt64, List<String^>^>^ overwrittenBy =
+		gcnew Dictionary<UInt64, List<String^>^>();
+
+	for each (String ^ relPath in installedFiles)
+	{
+		if (String::IsNullOrWhiteSpace(relPath))
+			continue;
+
+		if (IsBakFile(relPath) || IsInsideBakDir(relPath))
+			continue;
+
+		if (!IsInstallPayloadFile(relPath))
+			continue;
+
+		String^ normalizedPath = relPath->Trim()->ToLowerInvariant();
+		normalizedPath = normalizedPath->Replace("/", "\\");
+
+		List<UInt64>^ owners = nullptr;
+
+		if (!fileOwners->TryGetValue(normalizedPath, owners))
+			continue; //vanilla or unknown
+
+		if (!owners || owners->Count == 0)
+			continue; //still owned by this item
+
+		for each (UInt64 ownerId in owners)
+		{
+			if (ownerId == itemId)
+				continue;
+
+			CWorkshopItem* otherItem = FindWorkshopItem(ownerId);
+			if (!otherItem || !otherItem->m_bIsInstalled)
+				continue;
+
+			//if another installed item claims this file, then this file is overwritten
+			if (!overwrittenBy->ContainsKey(ownerId))
+				overwrittenBy[ownerId] = gcnew List<String^>();
+
+			overwrittenBy[ownerId]->Add(relPath);
+		}
+	}
 
 	//show debug file conflict report
 	if (bShowReport)
 	{
-		//group: otherItemId -> list of files overwritten
-		Dictionary<UInt64, List<String^>^>^ overwrittenBy =
-			gcnew Dictionary<UInt64, List<String^>^>();
-
-		for each (String ^ relPath in installedFiles)
-		{
-			if (String::IsNullOrWhiteSpace(relPath))
-				continue;
-
-			if (IsBakFile(relPath) || IsInsideBakDir(relPath))
-				continue;
-
-			UInt64 currentOwner = 0;
-			if (!fileOwners->TryGetValue(relPath, currentOwner))
-				continue; //vanilla or no owner
-
-			if (currentOwner == itemId)
-				continue; //still owned by this item
-
-			if (!overwrittenBy->ContainsKey(currentOwner))
-				overwrittenBy[currentOwner] = gcnew List<String^>();
-
-			overwrittenBy[currentOwner]->Add(relPath);
-		}
-
 		if (overwrittenBy->Count > 0)
 		{
 			StringBuilder^ reportMsg = gcnew StringBuilder();
@@ -985,7 +1043,7 @@ bool CMainModule::IsItemMarkedOverwritten(uint64 itemId, bool bShowReport)
 		}
 	}
 
-	return IsItemOverwrittenByOwnership(itemId, installedFiles, fileOwners);
+	return overwrittenBy->Count > 0;
 }
 
 bool CMainModule::IsItemOverwrittenByOwnership(uint64 itemId, HashSet<String^>^ installedFiles, Dictionary<String^, UInt64>^ fileOwners)
@@ -1286,7 +1344,7 @@ List<UInt64>^ CMainModule::GetInstalledItemIds()
 {
 	List<UInt64>^ result = gcnew List<UInt64>();
 
-	for each (String ^ strItemId in GetInstalledWorkshopItems())
+	for each (String^ strItemId in GetInstalledWorkshopItems())
 	{
 		uint64 itemId = ItemIdFromString(strItemId);
 		
@@ -1387,6 +1445,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 	String^ destPath = GetGamePath();
 
 	String^ uninstPath = GetUninstallRoot();
+	String^ uninstPathC = Path::Combine(uninstPath, "c");
 	String^ strItemId = itemId.ToString();
 	String^ uninstFile = Path::Combine(uninstPath, strItemId);
 
@@ -1422,7 +1481,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 	List<String^>^ conflictRelevantFiles = gcnew List<String^>();
 	for each (String ^ relPath in allFilesList) //checking against all files, including .java/.class
 	{
-		if (IsConflictRelevantFile(relPath))
+		if (IsInstallPayloadFile(relPath))
 			conflictRelevantFiles->Add(relPath);
 	}
 
@@ -1437,8 +1496,24 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 	HashSet<String^>^ writtenFiles =
 		gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
 
-	if (!ResolveInstallOverwrites(itemId, conflictRelevantFiles, conflictedItemIds))
+	if (!CheckFileConflicts(itemId, conflictRelevantFiles))
 		return false;
+
+	auto fileOwners = BuildFileOwnerMap();
+
+	for each (String^ relPath in conflictRelevantFiles)
+	{
+		List<UInt64>^ owners;
+
+		if (fileOwners->TryGetValue(relPath, owners))
+		{
+			for each (UInt64 ownerId in owners)
+			{
+				if (ownerId != itemId)
+					conflictedItemIds->Add(ownerId.ToString());
+			}
+		}
+	}
 
 	// ------------------------------------------------------------
 	// Step 4: execute install transaction
@@ -1492,13 +1567,16 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 		if (!uInfo)
 			throw gcnew InvalidOperationException(LOC_INSTALL_LOG_INIT_EX);
 
-		//build set of java classes
-		HashSet<String^>^ javaClasses = gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+		//build sets of JVM files
 		HashSet<String^>^ installedClassFiles = gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+		HashSet<String^>^ installedJavaFiles = gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
 
-		//mark each .class file that we're going to install
+		//mark each JVM file that we're going to install
 		for each (String^ relPath in jvmFilesList)
 		{
+			if (relPath->EndsWith(".java", StringComparison::OrdinalIgnoreCase))
+				installedJavaFiles->Add(relPath);
+
 			if (relPath->EndsWith(".class", StringComparison::OrdinalIgnoreCase))
 				installedClassFiles->Add(relPath);
 		}
@@ -1556,6 +1634,29 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			
 			if (writtenFiles->Add(relPath))
 				uInfo->WriteLine(relPath);
+
+			if (g_UseFictiveJavaFiles)
+			{
+				//locate sibling .java file
+				String^ classDirRel = Path::GetDirectoryName(relPath); //example: "sl\Scripts\game"
+				String^ className = Path::GetFileNameWithoutExtension(relPath); //example: "Bot"
+
+				String^ siblingJavaRelPath = Path::Combine(classDirRel, "src", className + ".java");
+				String^ siblingJavaFullPath = Path::Combine(destPath, siblingJavaRelPath);
+
+				bool bJavaInstalledByItem = installedJavaFiles->Contains(siblingJavaRelPath);
+
+				//log a fictive .java if none exists
+				if (!bJavaInstalledByItem)
+				{
+					DebugLog("logging fictive .java file:");
+					DebugLog("   " + siblingJavaRelPath);
+
+					//log so uninstall removes it
+					if (writtenFiles->Add(siblingJavaRelPath))
+						uInfo->WriteLine(siblingJavaRelPath);
+				}
+			}
 		}
 
 		//install .java files
@@ -1590,7 +1691,6 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			if (writtenFiles->Add(relPath))
 				uInfo->WriteLine(relPath);
 
-#ifdef USE_FICTIVE_JVM_CLASS_FILES
 			//locate sibling .class file
 			String^ javaDirRel = Path::GetDirectoryName(relPath); //example: "sl\Scripts\game\src"
 			String^ parentDirRel = Path::GetDirectoryName(javaDirRel); //example: "sl\Scripts\game"
@@ -1599,27 +1699,29 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			String^ siblingClassRelPath = Path::Combine(parentDirRel, siblingClassName);
 			String^ siblingClassFullPath = Path::Combine(destPath, siblingClassRelPath);
 
-			bool bDumpSiblingPaths = false;
-			if (bDumpSiblingPaths)
+			if (g_UseFictiveClassFiles)
 			{
-				DebugLog("USE_FICTIVE_JVM_CLASS_FILES");
+				bool bDumpSiblingPaths = false;
+				if (bDumpSiblingPaths)
+				{
+					DebugLog("g_UseFictiveClassFiles");
 
-				DebugLog("javaDirRel:");
-				DebugLog("   " + javaDirRel);
+					DebugLog("javaDirRel:");
+					DebugLog("   " + javaDirRel);
 
-				DebugLog("parentDirRel:");
-				DebugLog("   " + parentDirRel);
+					DebugLog("parentDirRel:");
+					DebugLog("   " + parentDirRel);
 
-				DebugLog("siblingClassName:");
-				DebugLog("   " + siblingClassName);
+					DebugLog("siblingClassName:");
+					DebugLog("   " + siblingClassName);
 
-				DebugLog("siblingClassRelPath:");
-				DebugLog("   " + siblingClassRelPath);
+					DebugLog("siblingClassRelPath:");
+					DebugLog("   " + siblingClassRelPath);
 
-				DebugLog("siblingClassFullPath:");
-				DebugLog("   " + siblingClassFullPath);
+					DebugLog("siblingClassFullPath:");
+					DebugLog("   " + siblingClassFullPath);
+				}
 			}
-#endif
 
 			//delete stale .class file
 			int srcIdx = dstJvm->LastIndexOf("\\src\\", StringComparison::OrdinalIgnoreCase);
@@ -1638,12 +1740,13 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 					{
 						String^ classBackupRelPath = classRelPath + ".bak" + strItemId;
 						BackupFile(destPath, classRelPath, classBackupRelPath, uInfo);
+
+						//only delete if this item did NOT install that class
+						DebugLog("DELETE STALE CLASS FILE:");
+						DebugLog("   " + classPath);
+
+						File::Delete(classPath);
 					}
-
-					DebugLog("DELETE STALE CLASS FILE:");
-					DebugLog("   " + classPath);
-
-					File::Delete(classPath);
 				}
 				else
 				{
@@ -1652,29 +1755,31 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 				}
 			}
 
-#ifdef USE_FICTIVE_JVM_CLASS_FILES
-			bool bClassInstalledByItem = installedClassFiles->Contains(siblingClassRelPath);
-
-			//create fictive .class if none exists
-			if (!bClassInstalledByItem && !File::Exists(siblingClassFullPath))
+			if (g_UseFictiveClassFiles)
 			{
-				DebugLog("creating fictive .class file:");
-				DebugLog("   " + siblingClassRelPath);
+				bool bClassInstalledByItem = installedClassFiles->Contains(siblingClassRelPath);
 
-				String^ siblingClassDirFull = Path::GetDirectoryName(siblingClassFullPath);
-				if (!Directory::Exists(siblingClassDirFull))
+				//create fictive .class if none exists
+				if (!bClassInstalledByItem && !File::Exists(siblingClassFullPath))
 				{
-					DebugLog("CreateDirectory: " + siblingClassDirFull);
-					Directory::CreateDirectory(siblingClassDirFull);
+					DebugLog("creating fictive .class file:");
+					DebugLog("   " + siblingClassFullPath);
+
+					String^ siblingClassDirFull = Path::GetDirectoryName(siblingClassFullPath);
+					if (!Directory::Exists(siblingClassDirFull))
+					{
+						DebugLog("CreateDirectory: " + siblingClassDirFull);
+						Directory::CreateDirectory(siblingClassDirFull);
+					}
+
+					FileStream^ fs = File::Create(siblingClassFullPath);
+					fs->Close();
+
+					//log so uninstall removes it
+					if (writtenFiles->Add(siblingClassRelPath))
+						uInfo->WriteLine(siblingClassRelPath);
 				}
-
-				FileStream^ fs = File::Create(siblingClassFullPath);
-				fs->Close();
-
-				//log so uninstall removes it
-				uInfo->WriteLine(siblingClassRelPath);
 			}
-#endif
 		}
 
 		//installing normal files
@@ -1766,6 +1871,78 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 	if (file->Exists)
 		File::SetAttributes(file->FullName, FileAttributes::ReadOnly);
 
+	// ------------------------------------------------------------
+	// Step 5: dependency graph (required by the old installer)
+	// ------------------------------------------------------------
+
+	if (conflictedItemIds->Count > 0)
+	{
+		DebugLog("building transitive dependency graph");
+
+		Directory::CreateDirectory(uninstPathC);
+
+		//breadth-first propagation
+		Generic::Queue<String^>^ toProcess =
+			gcnew Generic::Queue<String^>();
+
+		HashSet<String^>^ visited =
+			gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+
+		//seed queue with directly overwritten items
+		for each (String^ strId in conflictedItemIds)
+		{
+			if (!String::IsNullOrWhiteSpace(strId) &&
+				!String::Equals(strId, strItemId, StringComparison::OrdinalIgnoreCase))
+			{
+				toProcess->Enqueue(strId);
+			}
+		}
+
+		while (toProcess->Count > 0)
+		{
+			String^ targetId = toProcess->Dequeue();
+
+			if (visited->Contains(targetId))
+				continue;
+
+			visited->Add(targetId);
+
+			if (String::Equals(targetId, strItemId, StringComparison::OrdinalIgnoreCase))
+				continue;
+
+			String^ depFilePath = Path::Combine(uninstPathC, targetId);
+
+			HashSet<String^>^ overwrittenBy =
+				gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+
+			//load existing dependency list
+			if (File::Exists(depFilePath))
+			{
+				for each (String^ line in File::ReadLines(depFilePath))
+				{
+					if (String::IsNullOrWhiteSpace(line))
+						continue;
+
+					overwrittenBy->Add(line);
+
+					//propagate upward (transitive)
+					if (!visited->Contains(line) &&
+						!String::Equals(line, strItemId, StringComparison::OrdinalIgnoreCase))
+					{
+						toProcess->Enqueue(line);
+					}
+				}
+			}
+
+			//record that current item overwrites this target
+			overwrittenBy->Add(strItemId);
+
+			DebugLog("updating dependency file: " + depFilePath);
+
+			File::WriteAllLines(depFilePath, overwrittenBy);
+		}
+	}
+
 	DeleteSentinelFile(itemId);
 	item->m_bIsInstalled = true;
 
@@ -1790,8 +1967,11 @@ bool CMainModule::RemoveWorkshopItem(uint64 itemId, CWorkshopItem* item, String^
 		DebugLog("   this item is broken! performing best-effort cleanup");
 
 	String^ strItemId = itemId.ToString();
+
 	String^ uninstPath = GetUninstallRoot();
+	String^ uninstPathC = Path::Combine(uninstPath, "c");
 	String^ uninstFile = Path::Combine(uninstPath, strItemId);
+	String^ uninstFileC = Path::Combine(uninstPathC, strItemId);
 
 	InstallForm^ installForm = InstallForm::GetInstance();
 
@@ -1799,67 +1979,57 @@ bool CMainModule::RemoveWorkshopItem(uint64 itemId, CWorkshopItem* item, String^
 	// Step 1: block uninstall if other items depend on this one
 	// ------------------------------------------------------------
 
-	auto installedFiles = GetInstalledFiles(itemId); //xxxxxxxx
-	auto fileOwners = BuildFileOwnerMap();
-
-	HashSet<UInt64>^ blockers = gcnew HashSet<UInt64>();
-
-	for each (String ^ relPath in installedFiles)
+	if (File::Exists(uninstFileC))
 	{
-		if (String::IsNullOrWhiteSpace(relPath))
-			continue;
+		List<String^>^ blockers = gcnew List<String^>();
 
-		if (IsBakFile(relPath) || IsInsideBakDir(relPath))
-			continue;
-
-		UInt64 ownerId = 0;
-
-		if (fileOwners->TryGetValue(relPath, ownerId))
+		for each (String ^ line in File::ReadLines(uninstFileC)) //read all blockers from the uninstall file
 		{
-			if (ownerId != itemId)
-				blockers->Add(ownerId);
-		}
-	}
-
-	//if any blockers found, build a message for user
-	if (blockers->Count > 0)
-	{
-		DebugLog("   uninstall blocked by dynamic ownership, blockers found: " + blockers->Count);
-
-		StringBuilder^ msg = gcnew StringBuilder();
-		msg->AppendLine(LOC_REMOVE_OVERWRITTEN_BY);
-		msg->AppendLine();
-
-		for each (uint64 blockerId in blockers)
-		{
-			CWorkshopItem* blockerItem = FindWorkshopItem(blockerId);
-			String^ strBlockerItemTitle = blockerItem ? gcnew String(blockerItem->GetTitle()) : "";
-
-			msg->AppendLine(blockerId + " " + strBlockerItemTitle);
-
-			DebugLog(String::Format("   blockerId: {0} ({1})", blockerId, strBlockerItemTitle));
+			if (!String::IsNullOrWhiteSpace(line))
+				blockers->Add(line);
 		}
 
-		msg->AppendLine();
-		msg->AppendLine(LOC_REMOVE_USER_HINT);
-
-		//show message to user
-		DialogForm^ dialogForm = gcnew DialogForm();
-		try
+		//if any blockers found, build a message for user
+		if (blockers->Count > 0)
 		{
-			dialogForm->SetButtonLayout(DialogButtons::OK); //installation order is linear and currently we can't allow user to proceed here
-			dialogForm->SetHeading(LOC_CONFLICT_FILES_REMOVE);
-			dialogForm->SetDescription(msg->ToString());
-			dialogForm->SetFooter(LOC_CONFLICT_PRESS_OK);
+			DebugLog("   uninstall blocked by dependencies, blockers found: " + blockers->Count);
 
-			dialogForm->ShowDialog();
-		}
-		finally
-		{
-			delete dialogForm;
-		}
+			StringBuilder^ msg = gcnew StringBuilder();
+			msg->AppendLine(LOC_REMOVE_OVERWRITTEN_BY);
+			msg->AppendLine();
 
-		return false;
+			for each (String ^ blockerIdStr in blockers)
+			{
+				uint64 blockerId = ItemIdFromString(blockerIdStr);
+				CWorkshopItem* blockerItem = FindWorkshopItem(blockerId);
+				String^ strBlockerItemTitle = blockerItem ? gcnew String(blockerItem->GetTitle()) : "";
+
+				msg->AppendLine(blockerIdStr + " " + strBlockerItemTitle);
+
+				DebugLog(String::Format("   blockerId: {0} ({1})", blockerId, strBlockerItemTitle));
+			}
+
+			msg->AppendLine();
+			msg->AppendLine(LOC_REMOVE_USER_HINT);
+
+			//show message to user
+			DialogForm^ dialogForm = gcnew DialogForm();
+			try
+			{
+				dialogForm->SetButtonLayout(DialogButtons::OK); //installation order is linear and currently we can't allow user to proceed here
+				dialogForm->SetHeading(LOC_CONFLICT_FILES_REMOVE);
+				dialogForm->SetDescription(msg->ToString());
+				dialogForm->SetFooter(LOC_CONFLICT_PRESS_OK);
+
+				dialogForm->ShowDialog();
+			}
+			finally
+			{
+				delete dialogForm;
+			}
+
+			return false;
+		}
 	}
 
 	// ------------------------------------------------------------
@@ -2040,7 +2210,46 @@ bool CMainModule::RemoveWorkshopItem(uint64 itemId, CWorkshopItem* item, String^
 	DeleteSentinelFile(itemId);
 
 	// ------------------------------------------------------------
-	// Step 7: remove empty directories
+	// Step 7: clean dependency graph
+	// ------------------------------------------------------------
+
+	if (Directory::Exists(uninstPathC))
+	{
+		DebugLog("cleaning dependency graph");
+
+		for each (String ^ depFile in Directory::GetFiles(uninstPathC))
+		{
+			List<String^>^ remainingList = gcnew List<String^>();
+			bool bFound = false;
+
+			for each (String ^ line in File::ReadLines(depFile))
+			{
+				if (String::IsNullOrWhiteSpace(line))
+					continue;
+
+				if (line == strItemId)
+					bFound = true;
+				else
+					remainingList->Add(line);
+			}
+
+			if (!bFound)
+				continue;
+
+			if (remainingList->Count > 0)
+				File::WriteAllLines(depFile, remainingList);
+			else
+			{
+				DebugLog("File::Delete");
+				DebugLog("   " + depFile);
+
+				File::Delete(depFile);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------
+	// Step 8: remove empty directories
 	// ------------------------------------------------------------
 
 	DebugLog("removing empty directories");
@@ -2069,7 +2278,7 @@ bool CMainModule::RemoveWorkshopItem(uint64 itemId, CWorkshopItem* item, String^
 	}
 
 	// ------------------------------------------------------------
-	// Step 8: finalize uninstall
+	// Step 9: finalize uninstall
 	// ------------------------------------------------------------
 
 	item->m_bIsInstalled = false;
@@ -2306,6 +2515,7 @@ bool CMainModule::IsInstallInterrupted(uint64 itemId)
 	}
 }
 
+//if there a stale .class has been previously deleted, then this function will return false
 bool CMainModule::VerifyInstallation(uint64 itemId)
 {
 	DebugLog(String::Format("VerifyInstallation({0}) BEGIN", itemId));
@@ -2315,7 +2525,7 @@ bool CMainModule::VerifyInstallation(uint64 itemId)
 	{
 		DebugLog("   ERROR: can't find item " + itemId);
 		return false;
-	}	
+	}
 
 	//reading uninstall log
 	auto installedFilesList = GetInstalledFiles(itemId);
@@ -2339,7 +2549,7 @@ bool CMainModule::VerifyInstallation(uint64 itemId)
 		if (String::IsNullOrWhiteSpace(relPath))
 			continue;
 
-		if (IsBakFile(relPath) || IsInsideBakDir(relPath))
+		if (IsBakFile(relPath) || IsInsideBakDir(relPath) || !IsInstallPayloadFile(relPath))
 			continue;
 
 		String^ cacheFullPath = Path::Combine(GetItemCachePath(item), relPath);
@@ -2364,7 +2574,7 @@ bool CMainModule::VerifyInstallation(uint64 itemId)
 		{
 			DebugLog("   skip bak file " + relPath);
 			continue;
-		}			
+		}
 
 		uninstallFileSet->Add(relPath);
 
@@ -2374,6 +2584,20 @@ bool CMainModule::VerifyInstallation(uint64 itemId)
 		//file must exist
 		if (!File::Exists(fullPath))
 		{
+			if (g_UseFictiveJavaFiles)
+			{
+				String^ counterpartRel = GetJvmCounterpart(relPath);
+				if (counterpartRel != nullptr)
+				{
+					String^ counterpartFull = Path::Combine(GetGamePath(), counterpartRel);
+					if (File::Exists(counterpartFull))
+					{
+						DebugLog("  satisfied fictive JVM counterpart: " + relPath);
+						continue;
+					}
+				}
+			}
+
 			DebugLog("  missing installed file: " + relPath);
 			return false;
 		}
@@ -2391,21 +2615,28 @@ bool CMainModule::VerifyInstallation(uint64 itemId)
 		}
 	}
 
-	//enforce equality between uninstall log and cache payload ---
-	for each (String ^ strFileName in uninstallFileSet)
+	//enforce equality between uninstall log and cache payload
+	for each (String ^ relPath in uninstallFileSet)
 	{
-		if (!cacheFileSet->Contains(strFileName))
+		if (!cacheFileSet->Contains(relPath))
 		{
-			DebugLog("  uninstall log references file missing from cache: " + strFileName);
+			//skip fictive java mismatch
+			if (g_UseFictiveJavaFiles && relPath->EndsWith(".java", StringComparison::OrdinalIgnoreCase))
+			{
+				DebugLog("  skipping fictive .java during verification: " + relPath);
+				continue;
+			}
+
+			DebugLog("  uninstall log references file missing from cache: " + relPath);
 			return false;
 		}
 	}
 
-	for each (String^ strFileName in cacheFileSet)
+	for each (String^ relPath in cacheFileSet)
 	{
-		if (!uninstallFileSet->Contains(strFileName))
+		if (!uninstallFileSet->Contains(relPath))
 		{
-			DebugLog("  cache file missing from uninstall log: " + strFileName);
+			DebugLog("  cache file missing from uninstall log: " + relPath);
 			return false;
 		}
 	}
@@ -2481,8 +2712,10 @@ void CMainModule::Shutdown()
 
 void CMainModule::GetConfigOptions()
 {
-	g_EnableOverwrittenColumn =	ReadConfigBool("enable_overwritten_column", false);
-	g_PromptUserOnManageItem =	ReadConfigBool("user_prompt_on_manage_item", false);
+	g_EnableOverwrittenColumn	= ReadConfigBool("enable_overwritten_column", false);
+	g_PromptUserOnManageItem	= ReadConfigBool("user_prompt_on_manage_item", false);
+	g_UseFictiveJavaFiles		= ReadConfigBool("enable_fictive_java_files", false);
+	g_UseFictiveClassFiles		= ReadConfigBool("enable_fictive_class_files", false);
 
 	String^ gamePathFromConfig = ReadConfigString("game_path", nullptr);
 	if (gamePathFromConfig)

@@ -12,6 +12,8 @@
 //user adujstable options
 extern bool g_EnableOverwrittenColumn;
 extern bool g_PromptUserOnManageItem;
+extern bool g_UseFictiveJavaFiles;
+extern bool g_UseFictiveClassFiles;
 
 //do NOT use namespace std here! all CLI declarations stay fully qualified
 

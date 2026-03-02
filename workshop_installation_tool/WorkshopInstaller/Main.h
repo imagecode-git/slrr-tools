@@ -158,10 +158,11 @@ public:
 	HashSet<String^>^ GetInstalledFiles(uint64 itemId); //normalized relative paths
 	
 	//file conflict handling
-	Dictionary<String^, uint64>^ BuildFileOwnerMap(); //tells us which workshop item currently owns which installed file
-	bool ResolveInstallOverwrites(uint64 itemId, List<String^>^ candidateFiles, HashSet<String^>^% outOverwrittenItemIds);
+	Dictionary<String^, List<uint64>^>^ BuildFileOwnerMap(); //reads uninstall log of each workshop item and tells us which item currently owns which installed file
 	bool IsItemMarkedOverwritten(uint64 itemId, bool bShowReport = false); //tells the UI that this item should be marked as overwritten by other items
 	bool IsItemOverwrittenByOwnership(uint64 itemId, HashSet<String^>^ installedFiles, Dictionary<String^, UInt64>^ fileOwners); //determines whether any installed file of this item is currently owned by another item
+	bool CheckFileConflicts(uint64 itemId, List<String^>^ candidateFiles); //replicates file conflict behavior of the g13ba's installer
+	bool IsItemOverwrittenByAnotherItem(uint64 itemId); //to comply with the g13ba's installer
 
 	//messages, prompts
 	void	ErrorMessage(String^ message);

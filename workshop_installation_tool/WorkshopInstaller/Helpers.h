@@ -12,7 +12,10 @@ bool IsJvmFile(System::String^ fileName);
 bool IsBakFile(System::String^ fileName);
 bool IsInsideBakDir(System::String^ fileName);
 bool IsUnderDir(System::String^ relPath, System::String^ dir);
-bool IsConflictRelevantFile(System::String^ relPath);
+bool IsInstallPayloadFile(System::String^ relPath);
+
+System::String^ GetJvmCounterpart(System::String^ relPath); //returns a sibling .class or .java file
+bool HasJvmCounterpart(System::String^ relPath); //tells if a sibling .class or .java file exists for a given relPath
 
 uint64 ItemIdFromString(System::String^ strItemId);
 uint64 ItemIdFromSentinelFileName(System::String^ fileName);

@@ -80,10 +80,36 @@ void RunUnitTest(UnitTest testId)
 
 	case UnitTest::RunIsItemMarkedOverwritten:
 	{
-		bool bResult = MAIN->IsItemMarkedOverwritten(selectedItem->GetItemId(), true);
+		bool bResult = MAIN->IsItemMarkedOverwritten(selectedItemId, true);
 		String^ strMessage = strMessage = "[UT] IsItemMarkedOverwritten() has been called with result: " + (bResult ? "true" : "false");
 
 		SetStatus(strMessage);
+		break;
+	}
+
+	case UnitTest::CheckFileConflicts:
+	{
+		List<String^>^ allFilesList = MAIN->GetFilesToInstall(selectedItemId, MAIN->FC_ALL_FILES);
+
+		//conflict-relevant subset
+		List<String^>^ conflictRelevantFiles = gcnew List<String^>();
+		for each (String ^ relPath in allFilesList) //checking against all files, including .java/.class
+		{
+			if (IsInstallPayloadFile(relPath))
+				conflictRelevantFiles->Add(relPath);
+		}
+
+		HashSet<String^>^ conflictedItemIds =
+			gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+
+		//this makes uninstall log idempotent, prevents duplicate entries
+		HashSet<String^>^ writtenFiles =
+			gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
+
+		if(MAIN->CheckFileConflicts(selectedItemId, conflictRelevantFiles))
+			MAIN->WarningMessage("No file conlifcts detected for itemId " + selectedItemId);
+
+		SetStatus("[UT] CheckFileConflicts has finished the job");
 		break;
 	}
 

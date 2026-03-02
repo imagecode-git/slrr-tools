@@ -168,13 +168,69 @@ bool IsUnderDir(String^ relPath, String^ dir)
 	return relPath->StartsWith(dir + "\\", StringComparison::OrdinalIgnoreCase);
 }
 
-//these files will be skipped during conflict checks
-bool IsConflictRelevantFile(String^ relPath)
+//these files are ignored by the installer
+bool IsInstallPayloadFile(String^ relPath)
 {
 	if (relPath->Equals("imagecode.png"))
 		return false;
 
 	return true;
+}
+
+String^ GetJvmCounterpart(String^ relPath)
+{
+	if (String::IsNullOrWhiteSpace(relPath))
+		return nullptr;
+
+	if (!IsJvmFile(relPath))
+		return nullptr;
+
+	//use original casing for transformation
+	String^ originalPath = relPath;
+
+	//for detection only (case-insensitive check)
+	String^ lowerPath = relPath->ToLowerInvariant();
+
+	//java -> class
+	if (lowerPath->EndsWith(".java"))
+	{
+		if (!lowerPath->Contains("\\src\\"))
+			return nullptr;
+
+		//replace on original string, not lower
+		String^ classPath = originalPath->Replace("\\src\\", "\\");
+		String^ result = Path::ChangeExtension(classPath, ".class");
+
+		return result;
+	}
+
+	//class -> java
+	if (lowerPath->EndsWith(".class"))
+	{
+		int scriptsIndex = lowerPath->LastIndexOf("\\scripts\\");
+		if (scriptsIndex < 0)
+			return nullptr;
+
+		int lastSlash = originalPath->LastIndexOf("\\");
+		if (lastSlash < 0)
+			return nullptr;
+
+		String^ javaPath = originalPath->Insert(lastSlash, "\\src");
+		String^ result = Path::ChangeExtension(javaPath, ".java");
+
+		return result;
+	}
+
+	return nullptr;
+}
+
+bool HasJvmCounterpart(String^ relPath)
+{
+	String^ counterpart = GetJvmCounterpart(relPath);
+	if (counterpart == nullptr)
+		return false;
+
+	return File::Exists(counterpart);
 }
 
 //retuns a path like "cars\racers\supra\scripts\chassis.cfg", i.e. with normalized slashes and relative to the rootPath (GetGamePath() or any other root path)
