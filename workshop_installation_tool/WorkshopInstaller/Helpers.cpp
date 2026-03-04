@@ -43,7 +43,7 @@ bool ReadSteamAppID(const char* filename, std::string& outAppID)
 }
 
 //this function must _not_ generate .bak filenames due to policy-rich backup rules of the installer
-bool BackupFile(String^ destRoot, String^ relTargetPath, String^ relBackupPath, StreamWriter^ uninstallLog)
+bool BackupFile(String^ destRoot, String^ relTargetPath, String^ relBackupPath, UninstallLogWriter^ logWriter)
 {
 	String^ absTarget = Path::Combine(destRoot, relTargetPath);
 	if (!File::Exists(absTarget))
@@ -67,8 +67,8 @@ bool BackupFile(String^ destRoot, String^ relTargetPath, String^ relBackupPath, 
 
 	File::Copy(absTarget, absBackup, true);
 
-	if (uninstallLog)
-		uninstallLog->WriteLine(relBackupPath);
+	if(logWriter)
+		logWriter->Write(relBackupPath);
 
 	return true;
 }
@@ -207,10 +207,6 @@ String^ GetJvmCounterpart(String^ relPath)
 	//class -> java
 	if (lowerPath->EndsWith(".class"))
 	{
-		int scriptsIndex = lowerPath->LastIndexOf("\\scripts\\");
-		if (scriptsIndex < 0)
-			return nullptr;
-
 		int lastSlash = originalPath->LastIndexOf("\\");
 		if (lastSlash < 0)
 			return nullptr;

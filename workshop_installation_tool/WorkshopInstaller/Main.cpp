@@ -14,9 +14,6 @@
 
 //todo: "offline mode" that allows to cache/install items from the workshop cache folder
 
-//CHECK:
-//if user uses only g_UseFictiveClassFiles or only g_UseFictiveJavaFiles (i.e. not both at once), will the logic break?
-
 #include "Main.h"
 
 bool g_EnableOverwrittenColumn;
@@ -946,104 +943,60 @@ bool CMainModule::IsItemMarkedOverwritten(uint64 itemId, bool bShowReport)
 	if (!item || !item->m_bIsInstalled)
 		return false;
 
-	//files this item installed
-	HashSet<String^>^ installedFiles = GetInstalledFiles(itemId);
-	if (!installedFiles || installedFiles->Count == 0)
+	String^ depFile = Path::Combine(GetUninstallRoot(), "c\\" + itemId.ToString());
+	if (!File::Exists(depFile))
 		return false;
 
-	//current authoritative ownership
-	Dictionary<String^, List<UInt64>^>^ fileOwners = BuildFileOwnerMap();
+	FileInfo^ file = gcnew FileInfo(depFile);
+	if (file->Length == 0)
+		return false;
 
-	//group: otherItemId -> list of files overwritten
-	Dictionary<UInt64, List<String^>^>^ overwrittenBy =
-		gcnew Dictionary<UInt64, List<String^>^>();
+	if (!bShowReport)
+		return true;
 
-	for each (String ^ relPath in installedFiles)
+	//build report if requested
+	List<String^>^ blockers = gcnew List<String^>();
+
+	for each (String^ line in File::ReadLines(depFile))
 	{
-		if (String::IsNullOrWhiteSpace(relPath))
-			continue;
-
-		if (IsBakFile(relPath) || IsInsideBakDir(relPath))
-			continue;
-
-		if (!IsInstallPayloadFile(relPath))
-			continue;
-
-		String^ normalizedPath = relPath->Trim()->ToLowerInvariant();
-		normalizedPath = normalizedPath->Replace("/", "\\");
-
-		List<UInt64>^ owners = nullptr;
-
-		if (!fileOwners->TryGetValue(normalizedPath, owners))
-			continue; //vanilla or unknown
-
-		if (!owners || owners->Count == 0)
-			continue; //still owned by this item
-
-		for each (UInt64 ownerId in owners)
-		{
-			if (ownerId == itemId)
-				continue;
-
-			CWorkshopItem* otherItem = FindWorkshopItem(ownerId);
-			if (!otherItem || !otherItem->m_bIsInstalled)
-				continue;
-
-			//if another installed item claims this file, then this file is overwritten
-			if (!overwrittenBy->ContainsKey(ownerId))
-				overwrittenBy[ownerId] = gcnew List<String^>();
-
-			overwrittenBy[ownerId]->Add(relPath);
-		}
+		if (!String::IsNullOrWhiteSpace(line))
+			blockers->Add(line);
 	}
 
-	//show debug file conflict report
-	if (bShowReport)
+	if (blockers->Count == 0)
 	{
-		if (overwrittenBy->Count > 0)
-		{
-			StringBuilder^ reportMsg = gcnew StringBuilder();
-			reportMsg->AppendLine(LOC_OVERWRITE_MSG_BODY);
-			reportMsg->AppendLine();
-
-			for each (auto kv in overwrittenBy)
-			{
-				UInt64 otherId = kv.Key;
-				CWorkshopItem* otherItem = FindWorkshopItem(otherId);
-
-				String^ title =
-					otherItem ? gcnew String(otherItem->GetTitle()) : "";
-
-				reportMsg->AppendLine(otherId + " " + title);
-
-				for each (String ^ file in kv.Value)
-					reportMsg->AppendLine("  " + file);
-
-				reportMsg->AppendLine();
-			}
-
-			DialogForm^ dialogForm = gcnew DialogForm();
-			try
-			{
-				dialogForm->SetButtonLayout(DialogButtons::OK);
-				dialogForm->SetHeading(LOC_OVERWRITE_MSG_CAPTION);
-				dialogForm->SetDescription(reportMsg->ToString());
-				dialogForm->SetFooter(LOC_CONFLICT_PRESS_OK);
-
-				dialogForm->ShowDialog();
-			}
-			finally
-			{
-				delete dialogForm;
-			}
-		}
-		else
-		{
-			InfoMessage(LOC_OVERWRITE_NO_RESULTS, LOC_INFO_MSG_CAPTION);
-		}
+		InfoMessage(LOC_OVERWRITE_NO_RESULTS, LOC_INFO_MSG_CAPTION);
+		return false;
 	}
 
-	return overwrittenBy->Count > 0;
+	StringBuilder^ reportMsg = gcnew StringBuilder();
+	reportMsg->AppendLine(LOC_OVERWRITE_MSG_BODY);
+	reportMsg->AppendLine();
+
+	for each (String ^ blockerIdStr in blockers)
+	{
+		uint64 blockerId = ItemIdFromString(blockerIdStr);
+		CWorkshopItem* blockerItem = FindWorkshopItem(blockerId);
+
+		String^ title =	blockerItem ? gcnew String(blockerItem->GetTitle()) : "";
+
+		reportMsg->AppendLine(blockerIdStr + " " + title);
+	}    DialogForm^ dialog = gcnew DialogForm();
+	try
+	{
+		dialog->SetButtonLayout(DialogButtons::OK);
+		dialog->SetHeading(LOC_OVERWRITE_MSG_CAPTION);
+		dialog->SetDescription(reportMsg->ToString());
+		dialog->SetFooter(LOC_CONFLICT_PRESS_OK);
+
+		dialog->ShowDialog();
+	}
+	finally
+	{
+		delete dialog;
+	}
+
+	return true;
 }
 
 bool CMainModule::IsItemOverwrittenByOwnership(uint64 itemId, HashSet<String^>^ installedFiles, Dictionary<String^, UInt64>^ fileOwners)
@@ -1567,6 +1520,8 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 		if (!uInfo)
 			throw gcnew InvalidOperationException(LOC_INSTALL_LOG_INIT_EX);
 
+		UninstallLogWriter^ logWriter = gcnew UninstallLogWriter(uInfo);
+
 		//build sets of JVM files
 		HashSet<String^>^ installedClassFiles = gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
 		HashSet<String^>^ installedJavaFiles = gcnew HashSet<String^>(StringComparer::OrdinalIgnoreCase);
@@ -1613,18 +1568,18 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 
 				String^ javaBackupRelPath = javaRelPath + ".bak" + strItemId;
 
-				BackupFile(destPath, javaRelPath, javaBackupRelPath, uInfo);
+				BackupFile(destPath, javaRelPath, javaBackupRelPath, logWriter);
 
 				File::SetAttributes(javaFullPath, FileAttributes::Normal);
 				File::Delete(javaFullPath);
 
 				//log the operation so uninstall restores it later
-				uInfo->WriteLine(javaRelPath);
+				logWriter->Write(javaRelPath);
 			}
 
 			//backup original .class file
 			String^ relPathBackup = relPath + ".bak" + strItemId;
-			BackupFile(destPath, relPath, relPathBackup, uInfo);
+			BackupFile(destPath, relPath, relPathBackup, logWriter);
 
 			DebugLog("File::Copy");
 			DebugLog("   " + srcJvm);
@@ -1633,7 +1588,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			File::Copy(srcJvm, dstJvm, true);
 			
 			if (writtenFiles->Add(relPath))
-				uInfo->WriteLine(relPath);
+				logWriter->Write(relPath);
 
 			if (g_UseFictiveJavaFiles)
 			{
@@ -1654,7 +1609,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 
 					//log so uninstall removes it
 					if (writtenFiles->Add(siblingJavaRelPath))
-						uInfo->WriteLine(siblingJavaRelPath);
+						logWriter->Write(siblingJavaRelPath);
 				}
 			}
 		}
@@ -1673,7 +1628,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 
 			//backup existing .java file
 			String^ relPathBackup = relPath + ".bak" + strItemId;
-			BackupFile(destPath, relPath, relPathBackup, uInfo);
+			BackupFile(destPath, relPath, relPathBackup, logWriter);
 
 			String^ dstDir = Path::GetDirectoryName(dstJvm);
 			if (!Directory::Exists(dstDir))
@@ -1689,7 +1644,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			File::Copy(srcJvm, dstJvm, true);
 
 			if (writtenFiles->Add(relPath))
-				uInfo->WriteLine(relPath);
+				logWriter->Write(relPath);
 
 			//locate sibling .class file
 			String^ javaDirRel = Path::GetDirectoryName(relPath); //example: "sl\Scripts\game\src"
@@ -1739,7 +1694,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 					if (!installedClassFiles->Contains(classRelPath))
 					{
 						String^ classBackupRelPath = classRelPath + ".bak" + strItemId;
-						BackupFile(destPath, classRelPath, classBackupRelPath, uInfo);
+						BackupFile(destPath, classRelPath, classBackupRelPath, logWriter);
 
 						//only delete if this item did NOT install that class
 						DebugLog("DELETE STALE CLASS FILE:");
@@ -1777,7 +1732,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 
 					//log so uninstall removes it
 					if (writtenFiles->Add(siblingClassRelPath))
-						uInfo->WriteLine(siblingClassRelPath);
+						logWriter->Write(siblingClassRelPath);
 				}
 			}
 		}
@@ -1824,7 +1779,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 					relPathBackup = relPath + ".bak" + strItemId;
 				}
 
-				BackupFile(destPath, relPath, relPathBackup, uInfo);
+				BackupFile(destPath, relPath, relPathBackup, logWriter);
 
 				DebugLog("File::Delete");
 				DebugLog("   " + targetPath);
@@ -1834,7 +1789,7 @@ bool CMainModule::InstallWorkshopItem(uint64 itemId, CWorkshopItem* item, String
 			//write install log
 			DebugLog("uInfo->WriteLine: " + relPath);
 			if (writtenFiles->Add(relPath))
-				uInfo->WriteLine(relPath);
+				logWriter->Write(relPath);
 
 			File::Copy(sourcePath, targetPath, true);
 			DebugLog("File::Copy");

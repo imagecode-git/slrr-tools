@@ -2,28 +2,34 @@
 #include "Main.h"
 #include "Locale.h"
 
+#using <System.Core.dll> //HashSet
+
 extern CRITICAL_SECTION g_LogCriticalSection; //Helpers.cpp is the owner of this instance
 
-bool ReadSteamAppID(const char* filename, std::string& outAppID);
-bool BackupFile(System::String^ destRoot, System::String^ relTargetPath, System::String^ relBackupPath, StreamWriter^ uninstallLog);
-void DebugLog(System::String^ text);
+ref class UninstallLogWriter
+{
+private:
+    System::IO::StreamWriter^ log;
+    System::Collections::Generic::HashSet<System::String^>^ writtenFiles;
 
-bool IsJvmFile(System::String^ fileName);
-bool IsBakFile(System::String^ fileName);
-bool IsInsideBakDir(System::String^ fileName);
-bool IsUnderDir(System::String^ relPath, System::String^ dir);
-bool IsInstallPayloadFile(System::String^ relPath);
+public:
+    UninstallLogWriter(System::IO::StreamWriter^ writer)
+    {
+        log = writer;
+        writtenFiles = gcnew System::Collections::Generic::HashSet<System::String^>(System::StringComparer::OrdinalIgnoreCase);
+    }
 
-System::String^ GetJvmCounterpart(System::String^ relPath); //returns a sibling .class or .java file
-bool HasJvmCounterpart(System::String^ relPath); //tells if a sibling .class or .java file exists for a given relPath
+    void Write(System::String^ pathToWrite)
+    {
+        pathToWrite = pathToWrite->Replace("/", "\\")->Trim(); //normalize
 
-uint64 ItemIdFromString(System::String^ strItemId);
-uint64 ItemIdFromSentinelFileName(System::String^ fileName);
-char* StringToUtf8(System::String^ str);
-uint64 GetTimeNow(); //in ms
-System::String^ TimeToString(int32 time); //returns UTC time
-System::String^ GetNormalizedRelativePath(System::String^ rootPath, System::String^ fullPath);
-char* BrowseForDirectory();
+        if (!log || System::String::IsNullOrWhiteSpace(pathToWrite))
+            return;
+
+        if (writtenFiles->Add(pathToWrite))
+            log->WriteLine(pathToWrite);
+    }
+};
 
 //SentinelFormat helps to read sentinel files in CMainModule::IsInstallInterrupted()
 //abstract: prevents instantiation (gcnew SentinelFormat() is illegal)
@@ -49,7 +55,28 @@ public:
 
         key = line->Substring(0, pos)->Trim();
         value = line->Substring(pos + 1)->Trim();
-        
+
         return true;
     }
 };
+
+bool ReadSteamAppID(const char* filename, std::string& outAppID);
+bool BackupFile(System::String^ destRoot, System::String^ relTargetPath, System::String^ relBackupPath, UninstallLogWriter^ logWriter);
+void DebugLog(System::String^ text);
+
+bool IsJvmFile(System::String^ fileName);
+bool IsBakFile(System::String^ fileName);
+bool IsInsideBakDir(System::String^ fileName);
+bool IsUnderDir(System::String^ relPath, System::String^ dir);
+bool IsInstallPayloadFile(System::String^ relPath);
+
+System::String^ GetJvmCounterpart(System::String^ relPath); //returns a sibling .class or .java file
+bool HasJvmCounterpart(System::String^ relPath); //tells if a sibling .class or .java file exists for a given relPath
+
+uint64 ItemIdFromString(System::String^ strItemId);
+uint64 ItemIdFromSentinelFileName(System::String^ fileName);
+char* StringToUtf8(System::String^ str);
+uint64 GetTimeNow(); //in ms
+System::String^ TimeToString(int32 time); //returns UTC time
+System::String^ GetNormalizedRelativePath(System::String^ rootPath, System::String^ fullPath);
+char* BrowseForDirectory();

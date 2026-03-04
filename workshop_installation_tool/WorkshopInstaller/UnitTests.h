@@ -68,27 +68,6 @@
 //1. syncing subscribed items could be slow sometimes, seems to be Steam UGC limitation
 //2. GetGamePath() may cause freeze in some edge cases
 
-//BUG:
-//no conflict detection for the item #3 from this list:
-//https://steamcommunity.com/sharedfiles/filedetails/?id=2584483962
-//https://steamcommunity.com/sharedfiles/filedetails/?id=2457242618
-//https://steamcommunity.com/sharedfiles/filedetails/?id=1817910013
-//follow the exact install order to reproduce
-
-//BUG:
-//no conflict detection when installing !testing item after installing the three above
-
-//CHECK:
-//https://steamcommunity.com/sharedfiles/filedetails/?id=903698846
-//https://steamcommunity.com/sharedfiles/filedetails/?id=1309324644
-//https://steamcommunity.com/sharedfiles/filedetails/?id=2905361884
-
-//CHECK:
-//https://steamcommunity.com/sharedfiles/filedetails/?id=1103769563
-//https://steamcommunity.com/sharedfiles/filedetails/?id=1362267559
-//https://steamcommunity.com/sharedfiles/filedetails/?id=2277392353
-//https://steamcommunity.com/sharedfiles/filedetails/?id=2782728532
-
 public enum class UnitTest //public to allow .ToString()
 {
 	SimulateNotCachedItem,
