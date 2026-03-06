@@ -511,9 +511,26 @@ void PrintSpinner(const std::string message)
 	g_lastConsoleLineLength = line.length();
 }
 
+//longer than ANSI hack solution, but more reliable across platforms
 void ClearLine()
 {
-	cout << "\r\033[2K" << flush;  // \033[2K = clear entire line
+	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	GetConsoleScreenBufferInfo(h, &csbi);
+
+	DWORD written;
+	COORD start = { 0, csbi.dwCursorPosition.Y };
+
+	FillConsoleOutputCharacter(
+		h,
+		' ',
+		csbi.dwSize.X,
+		start,
+		&written
+	);
+
+	SetConsoleCursorPosition(h, start);
 }
 
 void SetTextColor(ConsoleTextColor color)

@@ -403,6 +403,10 @@ WorkshopManageAction MainModule::ParseParam(int argc, char** argv, WorkshopItem&
 			case WorkshopUploaderParam::NoWait:
 				UploaderConfig::Instance().bNoWait = ParseBool(value);
 				break;
+
+			case WorkshopUploaderParam::AutoDefaults:
+				UploaderConfig::Instance().bAutoDefaults = ParseBool(value);
+				break;
 		}
 	}
 
@@ -634,15 +638,37 @@ WorkshopManageResult MainModule::ValidateAndSubmit(WorkshopItem&& item, Workshop
 	//validate input params for this item
 	CreateValidationPolicy createPolicy;
 	DeleteValidationPolicy deletePolicy;
-	AutoCorrectValidationPolicy defaultPolicy;
+	BaseValidationPolicy basePolicy;
+	AutoCorrectValidationPolicy autoCorrectPolicy;
 	IWorkshopValidationPolicy* itemValidationPolicy = nullptr;
 
+	//behavior matrix:
+	//action	autoDefaults	policy
+	// -------------------------------
+	//create	false			strict create
+	//create	true			autocorrect
+	//modify	false			strict
+	//modify	true			autocorrect
+	//delete	any				delete
+
 	if (action == WorkshopManageAction::Create)
-		itemValidationPolicy = &createPolicy;
+	{
+		if (UploaderConfig::Instance().bAutoDefaults)
+			itemValidationPolicy = &autoCorrectPolicy;
+		else
+			itemValidationPolicy = &createPolicy;
+	}
 	else if (action == WorkshopManageAction::Delete)
+	{
 		itemValidationPolicy = &deletePolicy;
+	}
 	else
-		itemValidationPolicy = &defaultPolicy;
+	{
+		if (UploaderConfig::Instance().bAutoDefaults)
+			itemValidationPolicy = &autoCorrectPolicy;
+		else
+			itemValidationPolicy = &basePolicy;
+	}
 
 	item.ValidateForSubmission(*itemValidationPolicy);
 
@@ -929,9 +955,15 @@ void MainModule::OnPublishedItemsQueryCompleted(SteamUGCQueryCompleted_t* pResul
 	m_pendingAsyncOps--;
 
 	if (numResults == 0)
+	{
 		WarningMessage(LOC_NO_PUBLISHED_ITEMS);
+	}
 	else if (m_TotalUGCPages > 1)
+	{
 		HandleUGCPagination(publishedItems);
-	else
+	}
+	else if (m_CurrentUGCQueryPurpose == UGCQueryPurpose::Select)
+	{
 		PromptUserToSelectItem(publishedItems);
+	}
 }

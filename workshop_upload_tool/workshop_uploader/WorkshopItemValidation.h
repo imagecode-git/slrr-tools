@@ -63,6 +63,9 @@ struct IWorkshopValidationPolicy
 	//videos
 	virtual void OnVideoUrlsEmpty(WorkshopItem&) = 0;
 	virtual void OnVideoUrlEmpty(WorkshopItem&) = 0;
+
+	//update comment
+	virtual void OnUpdateCommentEmpty(WorkshopItem&) = 0;
 };
 
 //this policy only validates workshop item
@@ -119,6 +122,9 @@ public:
 	//videos
 	void OnVideoUrlsEmpty(WorkshopItem&) override;
 	void OnVideoUrlEmpty(WorkshopItem&) override;
+
+	//update comment
+	void OnUpdateCommentEmpty(WorkshopItem&) override;
 };
 
 //this policy restores default when necessary, only overrides rules it wants to repair or downgrade
@@ -147,6 +153,9 @@ public:
 
 	//screenshots
 	void OnScreenshotsEmpty(WorkshopItem&) override;
+
+	//update comment
+	void OnUpdateCommentEmpty(WorkshopItem&) override;
 };
 
 class CreateValidationPolicy : public AutoCorrectValidationPolicy
@@ -155,6 +164,19 @@ public:
 
 	//itemId
 	void OnItemIdInvalid(WorkshopItem&, const std::string&) override;
+
+	//content dir
+	void OnContentDirEmpty(WorkshopItem&) override;
+	void OnContentDirMissing(WorkshopItem&, const std::string&) override;
+	void OnContentDirHasNoFiles(WorkshopItem&, const std::string&) override;
+
+	//preview image
+	void OnPreviewImageEmpty(WorkshopItem&) override;
+	void OnPreviewImageMissing(WorkshopItem&, const std::string&) override;
+	void OnPreviewImageInvalid(WorkshopItem&, const std::string&) override;
+
+	//update comment
+	void OnUpdateCommentEmpty(WorkshopItem&) override;
 };
 
 class DeleteValidationPolicy : public BaseValidationPolicy

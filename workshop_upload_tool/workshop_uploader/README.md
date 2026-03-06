@@ -64,13 +64,14 @@ Parameters:
 -content: relative path to the content directory;
 -comment: release notes (modify mode only);
 -no-confirm: skip confirmation prompt (true/false);
--no-wait: skip "Press any key" on exit (true/false).
+-no-wait: skip "Press any key" on exit (true/false);
+-auto-defaults: automatic correction of missing or invalid workshop item fields before submission.
 
 Important: It's NOT recommended to use non-latin symbols in file or folder names, application may not identify them or just crash.
 Use only english names to avoid errors. Also make sure that application has no limitations on connecting to the internet before run.
 If you can't upload files, disable your anti-virus software and firewalls.
 
-Not allowed:
+Not allowed in create mode:
 
 - Empty or non-existent content path;
 - Non-existent or missing preview image.

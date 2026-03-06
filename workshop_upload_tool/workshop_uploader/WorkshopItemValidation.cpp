@@ -56,32 +56,32 @@ void BaseValidationPolicy::OnVisibilityNotSet(WorkshopItem& item)
 
 void BaseValidationPolicy::OnContentDirMissing(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Error, string(LOC_IV_NO_CONTENT_DIR) + "\n" + path});
+    messages.push_back({ MessageType::Warning, string(LOC_IV_NO_CONTENT_DIR) + "\n" + path});
 }
 
 void BaseValidationPolicy::OnContentDirHasNoFiles(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Error, string(LOC_IV_CONTENT_DIR_EMPTY) + path });
+    messages.push_back({ MessageType::Warning, string(LOC_IV_CONTENT_DIR_EMPTY) + path });
 }
 
 void BaseValidationPolicy::OnContentDirEmpty(WorkshopItem& item)
 {
-    messages.push_back({ MessageType::Error, LOC_IV_CONTENT_DIR_EMPTY });
+    messages.push_back({ MessageType::Warning, LOC_IV_CONTENT_DIR_EMPTY });
 }
 
 void BaseValidationPolicy::OnPreviewImageEmpty(WorkshopItem& item)
 {
-    messages.push_back({ MessageType::Error, LOC_IV_NO_PREVIEW_IMG_PATH });
+    messages.push_back({ MessageType::Warning, LOC_IV_NO_PREVIEW_IMG_PATH });
 }
 
 void BaseValidationPolicy::OnPreviewImageMissing(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Error, string(LOC_IV_FILE_NOT_FOUND) + path});
+    messages.push_back({ MessageType::Warning, string(LOC_IV_FILE_NOT_FOUND) + path});
 }
 
 void BaseValidationPolicy::OnPreviewImageInvalid(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Error, string(LOC_IV_IMAGE_FORMAT_ERROR) + path });
+    messages.push_back({ MessageType::Warning, string(LOC_IV_IMAGE_FORMAT_ERROR) + path });
 }
 
 void BaseValidationPolicy::OnCategoriesEmpty(WorkshopItem& item)
@@ -127,6 +127,11 @@ void BaseValidationPolicy::OnVideoUrlsEmpty(WorkshopItem& item)
 void BaseValidationPolicy::OnVideoUrlEmpty(WorkshopItem& item)
 {
     messages.push_back({ MessageType::Warning, LOC_IV_VIDEO_URL_EMPTY });
+}
+
+void BaseValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
+{
+    //do nothing, empty comment is mostly fine
 }
 
 //policy that will auto-correct input params when needed
@@ -190,8 +195,56 @@ void AutoCorrectValidationPolicy::OnScreenshotsEmpty(WorkshopItem& item)
     item.LoadScreenshotsFromDirectory(ITEM_DEFAULT_SCREENSHOT_DIR);
 }
 
-//policy for mode create, does not require itemId verification
+void AutoCorrectValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
+{
+    BaseValidationPolicy::OnUpdateCommentEmpty(item);
+
+    string strUpdateComment = ITEM_DEFAULT_UPDATE_COMMENT;
+
+    if (SteamUser())
+    {
+        CSteamID steamUserId = SteamUser()->GetSteamID();
+        uint64 steamId64 = steamUserId.ConvertToUint64();
+
+        strUpdateComment = ITEM_COMMENT_MODIFIED_BY + string(" ") + to_string(steamId64);
+    }
+
+    item.SetUpdateComment(strUpdateComment);
+}
+
+//policy for mode create, does not require itemId verification and initial update comment
 void CreateValidationPolicy::OnItemIdInvalid(WorkshopItem& item, const string& strItemId) {}
+void CreateValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item) {}
+
+void CreateValidationPolicy::OnContentDirMissing(WorkshopItem& item, const string& path)
+{
+    messages.push_back({ MessageType::Error, string(LOC_IV_NO_CONTENT_DIR) + "\n" + path });
+}
+
+void CreateValidationPolicy::OnContentDirHasNoFiles(WorkshopItem& item, const string& path)
+{
+    messages.push_back({ MessageType::Error, string(LOC_IV_CONTENT_DIR_EMPTY) + path });
+}
+
+void CreateValidationPolicy::OnContentDirEmpty(WorkshopItem& item)
+{
+    messages.push_back({ MessageType::Error, LOC_IV_CONTENT_DIR_EMPTY });
+}
+
+void CreateValidationPolicy::OnPreviewImageEmpty(WorkshopItem& item)
+{
+    messages.push_back({ MessageType::Error, LOC_IV_NO_PREVIEW_IMG_PATH });
+}
+
+void CreateValidationPolicy::OnPreviewImageMissing(WorkshopItem& item, const string& path)
+{
+    messages.push_back({ MessageType::Error, string(LOC_IV_FILE_NOT_FOUND) + path });
+}
+
+void CreateValidationPolicy::OnPreviewImageInvalid(WorkshopItem& item, const string& path)
+{
+    messages.push_back({ MessageType::Error, string(LOC_IV_IMAGE_FORMAT_ERROR) + path });
+}
 
 //policy for mode delete, it mostly does nothing as only itemId is required for delete
 void DeleteValidationPolicy::OnTitleEmpty(WorkshopItem& item) {}

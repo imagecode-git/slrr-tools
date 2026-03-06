@@ -52,6 +52,18 @@ bool WorkshopItem::IsSupportedImage(const string& filePath)
 			_stricmp(fileExt, kImageExtensionPng) == 0;
 }
 
+bool WorkshopItem::HasValidPreviewImage()
+{
+	const string& filePath = m_itemPreviewImagePath;
+
+	return !filePath.empty() && FileExists(filePath) && IsSupportedImage(filePath);
+}
+
+bool WorkshopItem::HasValidContentDir()
+{
+	return !m_itemContentDir.empty() && DirectoryExists(m_itemContentDir) && DirectoryHasFiles(m_itemContentDir);
+}
+
 //utilizes IWorkshopValidationPolicy to revert values to defaults if they're missing or broken
 void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 {
@@ -121,6 +133,9 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 	if (itemCategories.empty())
 	{
 		policy.OnCategoriesEmpty(*this);
+	}
+	else
+	{
 		for (const string& category : itemCategories)
 		{
 			if (category.empty())
@@ -289,22 +304,11 @@ void WorkshopItem::Reset()
 {
 	SetItemId(0);
 	SetVisibility(k_ERemoteStoragePublishedFileVisibilityPrivate);
-	SetTitle(ITEM_DEFAULT_TITLE);
-	SetDescription(ITEM_DEFAULT_DESCRIPTION);
-	SetPreviewImagePath(ITEM_DEFAULT_PREVIEW_IMAGE);
-	SetContentDir(ITEM_DEFAULT_CONTENT_DIR);
-	
-	string strUpdateComment = ITEM_DEFAULT_UPDATE_COMMENT;
-	
-	if (SteamUser())
-	{
-		CSteamID steamUserId = SteamUser()->GetSteamID();
-		uint64 steamId64 = steamUserId.ConvertToUint64();
-
-		strUpdateComment = ITEM_COMMENT_MODIFIED_BY + string(" ") + to_string(steamId64);
-	}
-
-	SetUpdateComment(strUpdateComment);
+	SetTitle("");
+	SetDescription("");
+	SetPreviewImagePath("");
+	SetContentDir("");
+	SetUpdateComment("");
 }
 
 void WorkshopItem::DebugDumpItemInfo()

@@ -7,15 +7,15 @@ void WorkshopManageTask::Start()
 {
 	auto ugc = SteamUGC();
 	PublishedFileId_t itemId = m_workshopItem.GetItemId();
+
+	if (!itemId && m_workshopAction != WorkshopManageAction::Create)
+	{
+		DebugLog("WorkshopManageTask::Start()");
+		DebugLog("   ERROR: itemId is not defined!");
+	}
 	
 	switch (m_workshopAction)
 	{
-		if (!itemId)
-		{
-			DebugLog("WorkshopManageTask::Start()");
-			DebugLog("   ERROR: itemId is not defined!");
-		}
-
 		case WorkshopManageAction::Create:
 		{
 			SetCursorVisible(false);
@@ -97,31 +97,53 @@ void WorkshopManageTask::NotifyFinished(bool bSuccess)
 void WorkshopManageTask::BuildUGCUpdateRequest()
 {
 	ISteamUGC* ugc = SteamUGC();
+	bool bUseContentDir = false;
+	bool bUsePreviewImage = false;
+
 	PrintMessage(LOC_LOADING_DATA);
 
 	m_SteamUGCUpdateHandle = ugc->StartItemUpdate(m_steamAppId, m_workshopItem.GetItemId());
 
-	vector<string> itemScreenshots = m_workshopItem.GetScreenshots();
-	vector<string> itemVideoUrls = m_workshopItem.GetVideoUrls();
-	vector<string> itemCategories = m_workshopItem.GetCategories();
+	string itemContentDir = m_workshopItem.GetContentDir();
+	string itemPreviewImage = m_workshopItem.GetPreviewImagePath();
+
+	//getters return const vector<string>&, no copying is necessary here
+	const auto& itemScreenshots = m_workshopItem.GetScreenshots();
+	const auto& itemVideoUrls = m_workshopItem.GetVideoUrls();
+	const auto& itemCategories = m_workshopItem.GetCategories();
 
 	ugc->SetItemTitle(m_SteamUGCUpdateHandle, m_workshopItem.GetTitle().c_str());
 	ugc->SetItemDescription(m_SteamUGCUpdateHandle, m_workshopItem.GetDescription().c_str());
 	ugc->SetItemVisibility(m_SteamUGCUpdateHandle, m_workshopItem.GetVisibility());
-	ugc->SetItemContent(m_SteamUGCUpdateHandle, m_workshopItem.GetContentDir().c_str());
-	ugc->SetItemPreview(m_SteamUGCUpdateHandle, m_workshopItem.GetPreviewImagePath().c_str());
-
 	ugc->SetItemUpdateLanguage(m_SteamUGCUpdateHandle, DEF_ITEM_LANGUAGE);
 	ugc->SetItemMetadata(m_SteamUGCUpdateHandle, DEF_ITEM_METADATA);
 
-	if (m_workshopAction == WorkshopManageAction::Modify)
+	//cannot create items with no content or preview image
+	if (m_workshopAction == WorkshopManageAction::Create)
 	{
-		//delete all previews if screenshots folder is empty
-		for (size_t i = 0; i < WorkshopItemLimits::kMaxScreenshots; i++)
-			ugc->RemoveItemPreview(m_SteamUGCUpdateHandle, i);
+		bUseContentDir = true;
+		bUsePreviewImage = true;
+	}
+	else if (m_workshopAction == WorkshopManageAction::Modify)
+	{
+		if (!itemScreenshots.empty())
+		{
+			//delete when necessary
+			for (size_t i = 0; i < WorkshopItemLimits::kMaxScreenshots; i++)
+				ugc->RemoveItemPreview(m_SteamUGCUpdateHandle, i);
+		}
+
+		//don't brick the uploader if content or preview image are not set in modify mode
+		bUseContentDir = m_workshopItem.HasValidContentDir();
+		bUsePreviewImage = m_workshopItem.HasValidPreviewImage();
 	}
 
-	//absolute paths or GetLocalPath(screenshotPath) ?
+	if(bUseContentDir)
+		ugc->SetItemContent(m_SteamUGCUpdateHandle, itemContentDir.c_str());
+
+	if (bUsePreviewImage)
+		ugc->SetItemPreview(m_SteamUGCUpdateHandle, itemPreviewImage.c_str());
+
 	for (const string& screenshotPath : itemScreenshots)
 		ugc->AddItemPreviewFile(m_SteamUGCUpdateHandle, screenshotPath.c_str(), k_EItemPreviewType_Image);
 
@@ -198,7 +220,7 @@ void WorkshopManageTask::Tick()
 
 	bool bShowProgress = (statusCode == k_EItemUpdateStatusPreparingContent && uploadTotal > 0);
 
-	if (bShowProgress > 0)
+	if (bShowProgress)
 		PrintProgress(uploadProcessed, uploadTotal, statusPrefix);
 	else if(bShowSpinner)
 		PrintSpinner(statusPrefix);

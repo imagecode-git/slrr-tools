@@ -21,6 +21,7 @@ public:
 
     bool bNoConfirm = false;
     bool bDumpDebugLogs = false;
+    bool bAutoDefaults = false;
     bool bUseMutex = false;
     bool bNoWait = false;
 

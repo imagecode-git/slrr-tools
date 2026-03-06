@@ -50,6 +50,13 @@
  * 44. test pagination in all uploader modes
  */
 
+//BUG:
+//policy does not print fatal error on missing content in modify mode
+
+//CHECK:
+//does old uploader ask for a content folder in modify mode? could the user modify item without specifying the content folder?
+//maybe revert to older SteamAPI or to a deprecated SteamUGC upload pipeline?
+
 #ifdef RUN_TESTS
 #include <windows.h>
 #include <cstdio>

@@ -74,6 +74,8 @@ public:
 	//validation
 	bool IsVisibilitySet();
 	bool IsSupportedImage(const std::string& filePath);
+	bool HasValidPreviewImage();
+	bool HasValidContentDir();
 	void ValidateForSubmission(IWorkshopValidationPolicy& policy);
 
 	void Reset();
