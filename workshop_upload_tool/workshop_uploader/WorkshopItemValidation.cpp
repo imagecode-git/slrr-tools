@@ -6,6 +6,20 @@ using namespace std;
 using namespace WorkshopItemLimits;
 using MessageType = WorkshopItemValidationMessage::Type;
 
+static void NotifyUser(const string& param, const vector<string>& values)
+{
+    PrintMessage("");
+    WarningMessage(LOC_AUTO_CORRECT + param);
+
+    for (const auto& value : values)
+        PrintMessage(value);
+}
+
+static void NotifyUser(const string& param, const string& value)
+{
+    NotifyUser(param, vector<string>{ value });
+}
+
 bool BaseValidationPolicy::HasWarnings() const
 {
     return any_of(messages.begin(), messages.end(),
@@ -61,12 +75,12 @@ void BaseValidationPolicy::OnContentDirMissing(WorkshopItem& item, const string&
 
 void BaseValidationPolicy::OnContentDirHasNoFiles(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Warning, string(LOC_IV_CONTENT_DIR_EMPTY) + path });
+    messages.push_back({ MessageType::Warning, string(LOC_IV_CONTENT_DIR_EMPTY) + "\n" + path});
 }
 
 void BaseValidationPolicy::OnContentDirEmpty(WorkshopItem& item)
 {
-    messages.push_back({ MessageType::Warning, LOC_IV_CONTENT_DIR_EMPTY });
+    messages.push_back({ MessageType::Warning, LOC_IV_CONTENT_DIR_ERROR });
 }
 
 void BaseValidationPolicy::OnPreviewImageEmpty(WorkshopItem& item)
@@ -137,68 +151,51 @@ void BaseValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
 //policy that will auto-correct input params when needed
 void AutoCorrectValidationPolicy::OnTitleEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnTitleEmpty(item);
     item.SetTitle(ITEM_DEFAULT_TITLE);
-}
 
-void AutoCorrectValidationPolicy::OnTitleTooLong(WorkshopItem& item)
-{
-    BaseValidationPolicy::OnTitleTooLong(item);
-    item.SetTitle(item.GetTitle().substr(0, kMaxTitleBytes));
+    NotifyUser(LOC_WII_TITLE, item.GetTitle());
 }
 
 void AutoCorrectValidationPolicy::OnDescriptionEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnDescriptionEmpty(item);
     item.SetDescription(ITEM_DEFAULT_DESCRIPTION);
-}
 
-void AutoCorrectValidationPolicy::OnDescriptionTooLong(WorkshopItem& item)
-{
-    BaseValidationPolicy::OnDescriptionTooLong(item);
-    item.SetDescription(item.GetDescription().substr(0, kMaxDescriptionBytes));
+    NotifyUser(LOC_WII_DESCRIPTION, item.GetDescription());
 }
 
 void AutoCorrectValidationPolicy::OnVisibilityNotSet(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnVisibilityNotSet(item);
-    item.SetVisibility(k_ERemoteStoragePublishedFileVisibilityPrivate); //default: private
+    ERemoteStoragePublishedFileVisibility defVisibility = k_ERemoteStoragePublishedFileVisibilityPrivate;
+    item.SetVisibility(defVisibility); //default: private
+
+    NotifyUser(LOC_WII_VISIBILITY, item.GetVisibilityString());
 }
 
-void AutoCorrectValidationPolicy::OnContentDirMissing(WorkshopItem& item, const string& path)
+void AutoCorrectValidationPolicy::OnContentDirEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnContentDirMissing(item, path);
-    item.SetContentDir(ITEM_DEFAULT_CONTENT_DIR);
+    string contentDir = ResolveRelPath(ITEM_DEFAULT_CONTENT_DIR);
+    item.SetContentDir(contentDir);
+
+    NotifyUser(LOC_WII_CONTENT_DIR, item.GetContentDir());
 }
 
 void AutoCorrectValidationPolicy::OnPreviewImageEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnPreviewImageEmpty(item);
-    item.SetPreviewImagePath(ITEM_DEFAULT_PREVIEW_IMAGE);
-}
+    string previewImagePath = ResolveRelPath(ITEM_DEFAULT_PREVIEW_IMAGE);
+    item.SetPreviewImagePath(previewImagePath);
 
-void AutoCorrectValidationPolicy::OnPreviewImageMissing(WorkshopItem& item, const string& path)
-{
-    BaseValidationPolicy::OnPreviewImageMissing(item, path);
-    item.SetPreviewImagePath(ITEM_DEFAULT_PREVIEW_IMAGE);
-}
-
-void AutoCorrectValidationPolicy::OnPreviewImageInvalid(WorkshopItem& item, const string& path)
-{
-    BaseValidationPolicy::OnPreviewImageInvalid(item, path);
-    item.SetPreviewImagePath(ITEM_DEFAULT_PREVIEW_IMAGE);
+    NotifyUser(LOC_WII_PREVIEW_IMG, item.GetPreviewImagePath());
 }
 
 void AutoCorrectValidationPolicy::OnScreenshotsEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnScreenshotsEmpty(item);
     item.LoadScreenshotsFromDirectory(ITEM_DEFAULT_SCREENSHOT_DIR);
+
+    NotifyUser(LOC_WII_SCREENSHOTS, item.GetScreenshots());
 }
 
 void AutoCorrectValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
 {
-    BaseValidationPolicy::OnUpdateCommentEmpty(item);
-
     string strUpdateComment = ITEM_DEFAULT_UPDATE_COMMENT;
 
     if (SteamUser())
@@ -210,11 +207,45 @@ void AutoCorrectValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
     }
 
     item.SetUpdateComment(strUpdateComment);
+
+    NotifyUser(LOC_WII_UPDATE_COMMENT, item.GetUpdateComment());
 }
 
 //policy for mode create, does not require itemId verification and initial update comment
 void CreateValidationPolicy::OnItemIdInvalid(WorkshopItem& item, const string& strItemId) {}
-void CreateValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item) {}
+
+void CreateValidationPolicy::OnTitleEmpty(WorkshopItem& item)
+{
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        BaseValidationPolicy::OnTitleEmpty(item);
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnTitleEmpty(item);
+}
+
+void CreateValidationPolicy::OnDescriptionEmpty(WorkshopItem& item)
+{
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        BaseValidationPolicy::OnDescriptionEmpty(item);
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnDescriptionEmpty(item);
+}
+
+void CreateValidationPolicy::OnVisibilityNotSet(WorkshopItem& item)
+{
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        BaseValidationPolicy::OnVisibilityNotSet(item);
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnVisibilityNotSet(item);
+}
 
 void CreateValidationPolicy::OnContentDirMissing(WorkshopItem& item, const string& path)
 {
@@ -223,17 +254,29 @@ void CreateValidationPolicy::OnContentDirMissing(WorkshopItem& item, const strin
 
 void CreateValidationPolicy::OnContentDirHasNoFiles(WorkshopItem& item, const string& path)
 {
-    messages.push_back({ MessageType::Error, string(LOC_IV_CONTENT_DIR_EMPTY) + path });
+    messages.push_back({ MessageType::Error, string(LOC_IV_CONTENT_DIR_EMPTY) + "\n" + path });
 }
 
 void CreateValidationPolicy::OnContentDirEmpty(WorkshopItem& item)
 {
-    messages.push_back({ MessageType::Error, LOC_IV_CONTENT_DIR_EMPTY });
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        messages.push_back({ MessageType::Error, LOC_IV_CONTENT_DIR_ERROR });
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnContentDirEmpty(item);
 }
 
 void CreateValidationPolicy::OnPreviewImageEmpty(WorkshopItem& item)
 {
-    messages.push_back({ MessageType::Error, LOC_IV_NO_PREVIEW_IMG_PATH });
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        messages.push_back({ MessageType::Error, LOC_IV_NO_PREVIEW_IMG_PATH });
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnPreviewImageEmpty(item);
 }
 
 void CreateValidationPolicy::OnPreviewImageMissing(WorkshopItem& item, const string& path)
@@ -244,6 +287,26 @@ void CreateValidationPolicy::OnPreviewImageMissing(WorkshopItem& item, const str
 void CreateValidationPolicy::OnPreviewImageInvalid(WorkshopItem& item, const string& path)
 {
     messages.push_back({ MessageType::Error, string(LOC_IV_IMAGE_FORMAT_ERROR) + path });
+}
+
+void CreateValidationPolicy::OnScreenshotsEmpty(WorkshopItem& item)
+{
+    if (!UploaderConfig::Instance().bCreateDefaults)
+    {
+        BaseValidationPolicy::OnScreenshotsEmpty(item);
+        return;
+    }
+
+    AutoCorrectValidationPolicy::OnScreenshotsEmpty(item);
+}
+
+void CreateValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)
+{
+    //no warnings or errors if initial release comment is empty
+    if (UploaderConfig::Instance().bCreateDefaults)
+    {
+        AutoCorrectValidationPolicy::OnUpdateCommentEmpty(item);
+    }
 }
 
 //policy for mode delete, it mostly does nothing as only itemId is required for delete

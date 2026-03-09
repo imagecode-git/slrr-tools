@@ -18,10 +18,9 @@
 #define ITEM_DEFAULT_UPDATE_COMMENT ""
 
 #define ITEM_COMMENT_MODIFIED_BY "Modified by"
-#define ITEM_COMMENT_INITIAL_RELEASE "Initial release by"
 
 #define DEF_ITEM_LANGUAGE "english"
-#define DEF_ITEM_METADATA "Default metadata"
+#define DEF_ITEM_METADATA "uploader=imagecode"
 
 namespace WorkshopItemLimits
 {
@@ -29,13 +28,15 @@ namespace WorkshopItemLimits
 	constexpr size_t kMaxDescriptionBytes = 8192; //max 8kb description
 	constexpr size_t kWin32MaxPath = MAX_PATH;
 	constexpr size_t kMaxScreenshots = 50;
+	constexpr size_t kMaxPossiblePreviews = 100; //must be always intentionally greater than kMaxScreenshots
 }
 
 static const EnumStringPair<ERemoteStoragePublishedFileVisibility> WorkshopItemVisibilityModesList[] =
 {
 	{ k_ERemoteStoragePublishedFileVisibilityPublic,		"public" },
 	{ k_ERemoteStoragePublishedFileVisibilityFriendsOnly,	"friends" },
-	{ k_ERemoteStoragePublishedFileVisibilityPrivate,		"private" }
+	{ k_ERemoteStoragePublishedFileVisibilityPrivate,		"private" },
+	{ k_ERemoteStoragePublishedFileVisibilityUnlisted,		"unlisted" }
 };
 
 class WorkshopItem
@@ -46,6 +47,7 @@ public:
 
 	PublishedFileId_t GetItemId();
 	ERemoteStoragePublishedFileVisibility GetVisibility();
+	std::string GetVisibilityString() const;
 
 	//these are immutable and return references, not copies
 	const std::string& GetTitle();
@@ -72,10 +74,15 @@ public:
 	bool LoadScreenshotsFromDirectory(const std::string& directory);
 	
 	//validation
-	bool IsVisibilitySet();
-	bool IsSupportedImage(const std::string& filePath);
-	bool HasValidPreviewImage();
-	bool HasValidContentDir();
+	bool IsSupportedImage(const std::string& filePath) const;
+	bool HasTitle() const;
+	bool HasDescription() const;
+	bool HasVisibility() const;
+	bool HasCategories() const;
+	bool HasScreenshots() const;
+	bool HasVideoUrls() const;
+	bool HasValidPreviewImage() const;
+	bool HasValidContentDir() const;
 	void ValidateForSubmission(IWorkshopValidationPolicy& policy);
 
 	void Reset();

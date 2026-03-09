@@ -31,7 +31,7 @@ void WorkshopManageTask::Start()
 		{
 			SetCursorVisible(false);
 			m_bIsUpdateInProgress = true;
-			ValidateItemId(itemId);
+			QueryWorkshopItemDetails(itemId);
 
 			break;
 		}
@@ -42,7 +42,7 @@ void WorkshopManageTask::Start()
 			m_bIsUpdateInProgress = true;
 
 			if (!m_IsRollbackTask)
-				ValidateItemId(itemId);
+				QueryWorkshopItemDetails(itemId);
 			else
 				ContinueAfterValidation(); //rollback: skip validation but still proceed
 
@@ -104,39 +104,42 @@ void WorkshopManageTask::BuildUGCUpdateRequest()
 
 	m_SteamUGCUpdateHandle = ugc->StartItemUpdate(m_steamAppId, m_workshopItem.GetItemId());
 
-	string itemContentDir = m_workshopItem.GetContentDir();
-	string itemPreviewImage = m_workshopItem.GetPreviewImagePath();
+	const string& itemTitle = m_workshopItem.GetTitle();
+	const string& itemDescription = m_workshopItem.GetDescription();
+	const string& itemContentDir = m_workshopItem.GetContentDir();
+	const string& itemPreviewImage = m_workshopItem.GetPreviewImagePath();
+	
+	ERemoteStoragePublishedFileVisibility itemVisibility = m_workshopItem.GetVisibility();
 
 	//getters return const vector<string>&, no copying is necessary here
 	const auto& itemScreenshots = m_workshopItem.GetScreenshots();
 	const auto& itemVideoUrls = m_workshopItem.GetVideoUrls();
 	const auto& itemCategories = m_workshopItem.GetCategories();
 
-	ugc->SetItemTitle(m_SteamUGCUpdateHandle, m_workshopItem.GetTitle().c_str());
-	ugc->SetItemDescription(m_SteamUGCUpdateHandle, m_workshopItem.GetDescription().c_str());
-	ugc->SetItemVisibility(m_SteamUGCUpdateHandle, m_workshopItem.GetVisibility());
-	ugc->SetItemUpdateLanguage(m_SteamUGCUpdateHandle, DEF_ITEM_LANGUAGE);
-	ugc->SetItemMetadata(m_SteamUGCUpdateHandle, DEF_ITEM_METADATA);
-
 	//cannot create items with no content or preview image
 	if (m_workshopAction == WorkshopManageAction::Create)
 	{
 		bUseContentDir = true;
 		bUsePreviewImage = true;
+
+		ugc->SetItemUpdateLanguage(m_SteamUGCUpdateHandle, DEF_ITEM_LANGUAGE);
+		ugc->SetItemMetadata(m_SteamUGCUpdateHandle, DEF_ITEM_METADATA);
 	}
 	else if (m_workshopAction == WorkshopManageAction::Modify)
 	{
-		if (!itemScreenshots.empty())
-		{
-			//delete when necessary
-			for (size_t i = 0; i < WorkshopItemLimits::kMaxScreenshots; i++)
-				ugc->RemoveItemPreview(m_SteamUGCUpdateHandle, i);
-		}
-
 		//don't brick the uploader if content or preview image are not set in modify mode
 		bUseContentDir = m_workshopItem.HasValidContentDir();
 		bUsePreviewImage = m_workshopItem.HasValidPreviewImage();
 	}
+
+	if(m_workshopItem.HasTitle())
+		ugc->SetItemTitle(m_SteamUGCUpdateHandle, itemTitle.c_str());
+
+	if(m_workshopItem.HasDescription())
+		ugc->SetItemDescription(m_SteamUGCUpdateHandle, itemDescription.c_str());
+
+	if(m_workshopItem.HasVisibility())
+		ugc->SetItemVisibility(m_SteamUGCUpdateHandle, itemVisibility);
 
 	if(bUseContentDir)
 		ugc->SetItemContent(m_SteamUGCUpdateHandle, itemContentDir.c_str());
@@ -144,23 +147,56 @@ void WorkshopManageTask::BuildUGCUpdateRequest()
 	if (bUsePreviewImage)
 		ugc->SetItemPreview(m_SteamUGCUpdateHandle, itemPreviewImage.c_str());
 
-	for (const string& screenshotPath : itemScreenshots)
-		ugc->AddItemPreviewFile(m_SteamUGCUpdateHandle, screenshotPath.c_str(), k_EItemPreviewType_Image);
+	//categories and tags
+	if (m_workshopItem.HasCategories())
+	{
+		vector<const char*> tagPtrs;
+		tagPtrs.reserve(itemCategories.size());
 
-	for (const string& videoUrl : itemVideoUrls)
-		ugc->AddItemPreviewVideo(m_SteamUGCUpdateHandle, videoUrl.c_str());
+		for (const string& category : itemCategories)
+			tagPtrs.push_back(category.c_str());
 
-	vector<const char*> tagPtrs;
-	tagPtrs.reserve(itemCategories.size());
+		SteamParamStringArray_t tags;
+		tags.m_nNumStrings = static_cast<int32>(tagPtrs.size());
+		tags.m_ppStrings = tagPtrs.data();
 
-	for (const string& category : itemCategories)
-		tagPtrs.push_back(category.c_str());
+		ugc->SetItemTags(m_SteamUGCUpdateHandle, &tags);
+	}
 
-	SteamParamStringArray_t tags;
-	tags.m_nNumStrings = static_cast<int32>(tagPtrs.size());
-	tags.m_ppStrings = tagPtrs.data();
+	//screenshots and videos
+	bool bReplaceScreenshots = m_workshopItem.HasScreenshots();
+	bool bReplaceVideos = m_workshopItem.HasVideoUrls();
 
-	ugc->SetItemTags(m_SteamUGCUpdateHandle, &tags);
+	vector<size_t> indicesToRemove;
+
+	if (bReplaceScreenshots)
+		indicesToRemove.insert(indicesToRemove.end(),
+			m_itemImagePreviewIndices.begin(),
+			m_itemImagePreviewIndices.end());
+
+	if (bReplaceVideos)
+		indicesToRemove.insert(indicesToRemove.end(),
+			m_itemVideoPreviewIndices.begin(),
+			m_itemVideoPreviewIndices.end());
+
+	//sort, remove in reverse
+	sort(indicesToRemove.begin(), indicesToRemove.end());
+
+	for (auto it = indicesToRemove.rbegin(); it != indicesToRemove.rend(); ++it)
+		ugc->RemoveItemPreview(m_SteamUGCUpdateHandle, *it);
+
+	//re-add media
+	if (bReplaceScreenshots)
+	{
+		for (const string& screenshotPath : itemScreenshots)
+			ugc->AddItemPreviewFile(m_SteamUGCUpdateHandle, screenshotPath.c_str(), k_EItemPreviewType_Image);
+	}
+
+	if (bReplaceVideos)
+	{
+		for (const string& videoUrl : itemVideoUrls)
+			ugc->AddItemPreviewVideo(m_SteamUGCUpdateHandle, videoUrl.c_str());
+	}
 }
 
 void WorkshopManageTask::Tick()
@@ -356,7 +392,6 @@ void WorkshopManageTask::OnWorkshopItemDeleted(DeleteItemResult_t* result, bool 
 	}
 	else
 	{
-		ErrorMessage(LOC_OPERATION_FAIL);
 		NotifyFinished(false); //reverse delete indicates that the preceding create operation is unsuccessful
 	}
 }
@@ -405,13 +440,17 @@ void WorkshopManageTask::ResetUpdateProgress()
 	m_bIsUpdateInProgress = false;
 	m_lastUploadProcessed = 0;
 	m_lastUploadTotal = 0;
+
+	m_itemImagePreviewIndices.clear();
+	m_itemVideoPreviewIndices.clear();
 }
 
-void WorkshopManageTask::ValidateItemId(PublishedFileId_t itemId)
+void WorkshopManageTask::QueryWorkshopItemDetails(PublishedFileId_t itemId)
 {
 	PrintMessage(LOC_VALIDATING_ITEM_ID + to_string(itemId));
 
 	UGCQueryHandle_t handle = SteamUGC()->CreateQueryUGCDetailsRequest(&itemId, 1);
+	SteamUGC()->SetReturnAdditionalPreviews(handle, true); //item previews info won't be loaded without this
 	SteamAPICall_t queryCall = SteamUGC()->SendQueryUGCRequest(handle);
 
 	m_SteamItemIdQueryCall.Set(queryCall, this, &WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted);
@@ -422,6 +461,7 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 	bool bSuccess = true;
 	string userMessage;
 
+	ISteamUGC* ugc = SteamUGC();
 	SteamUGCDetails_t ugcDetails;
 	PublishedFileId_t itemId = m_workshopItem.GetItemId();
 
@@ -441,7 +481,7 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 	{
 		bSuccess = false;
 		userMessage = LOC_IIV_ITEM_DOES_NOT_EXIST;
-	} else if (!SteamUGC()->GetQueryUGCResult(result->m_handle, 0, &ugcDetails))
+	} else if (!ugc->GetQueryUGCResult(result->m_handle, 0, &ugcDetails))
 	{
 		bSuccess = false;
 		userMessage = LOC_IIV_ITEM_DETAILS_FAIL;
@@ -470,7 +510,36 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 
 	if (bSuccess)
 	{
-		SteamUGC()->ReleaseQueryUGCRequest(result->m_handle);
+		uint32 itemPreviewCount = ugc->GetQueryUGCNumAdditionalPreviews(result->m_handle, 0);
+
+		//we need to memorize which index is a screenshot and which is a video because they're all "previews" in Steam terms
+		for (uint32 i = 0; i < itemPreviewCount; ++i)
+		{
+			char previewUrl[1024];
+			char originalFileName[1024];
+			EItemPreviewType type;
+
+			if (ugc->GetQueryUGCAdditionalPreview(
+				result->m_handle,
+				0,
+				i,
+				previewUrl,
+				sizeof(previewUrl),
+				originalFileName,
+				sizeof(originalFileName),
+				&type))
+			{
+				if (type == k_EItemPreviewType_Image)
+				{
+					m_itemImagePreviewIndices.emplace_back(static_cast<size_t>(i));
+				}
+				else if (type == k_EItemPreviewType_YouTubeVideo)
+				{
+					m_itemVideoPreviewIndices.emplace_back(static_cast<size_t>(i));
+				}
+			}
+		}
+
 		ContinueAfterValidation();
 	}
 	else
@@ -482,4 +551,6 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 		m_bIsUpdateInProgress = false;
 		NotifyFinished(false);
 	}
+
+	ugc->ReleaseQueryUGCRequest(result->m_handle);
 }

@@ -24,7 +24,7 @@
  * 18. delete item -> no params [OK]
  * 19. run with Steam disabled
  * 20. cut internet while running [FAIL] - hangs on "Uploading images..." when creating new item, leaves a garbage broken item
- * 21. invalid params
+ * 21. invalid params [OK]
  * 22. test with SL1 [OK]
  * 23. debug prints while debug.log is read-only
  * 24. itemId is set, but the item is non-existent (mode modify, itemId 3628393889) [OK]
@@ -47,15 +47,91 @@
  * 41. create item that has 2MB+ images in the screenshots folder [OK]
  * 42. go to pagination ("Enter key:") and press Ctrl+C [OK]
  * 43. unit tests for helper functions [OK]
- * 44. test pagination in all uploader modes
+ * 44. test pagination in all uploader modes [OK]
+ * 45. spam create 50 items stress test [OK]
+ * 46. spam delete 50 items stress test [OK]
+ * 47. info mode no pagination [OK]
+ * 48. upload under a blackhole internet connection (silent packet loss) [OK]
  */
 
-//BUG:
-//policy does not print fatal error on missing content in modify mode
+/*
+MODE CHECK:
+1. create mode, -create-defaults OFF
 
-//CHECK:
-//does old uploader ask for a content folder in modify mode? could the user modify item without specifying the content folder?
-//maybe revert to older SteamAPI or to a deprecated SteamUGC upload pipeline?
+- example bat [OK]
+- comments set [OK]
+- comments empty [OK]
+- empty categories [OK]
+- empty params [OK]
+- title only [OK]
+- content only [OK]
+- content only empty [OK]
+- content + preview [OK]
+- preview + content empty [OK]
+- visibility not set [OK] -> defaults to hidden
+- screenshots not set [OK] -> did not brick the uploader
+- videos not set [OK]
+
+2. create mode, -create-defaults ON
+
+- example bat [OK]
+- empty params [OK]
+- preview not set [OK]
+- content not set [OK]
+- videos not set [OK]
+- screenshots not set [OK]
+- comment not set [OK]
+- title not set [OK]
+- empty categories [OK]
+- visibility not set [OK]
+- description not set [OK]
+- only strict params set [OK]
+- strict params + screenshots [OK]
+- strict params + title + description [OK]
+
+3. test visibility "unlisted" [OK]
+
+4. test incorrect visibility [OK]
+
+5. modify mode
+
+- title only [OK]
+- preview only [OK]
+- screenshots only [OK]
+- videos only [OK]
+- mixed media: screenshots + videos [OK]
+- only mode is set, no data to change [OK]
+- description only [OK]
+- categories only [OK]
+- visibility only [OK]
+- content only [OK]
+- preview only [OK]
+- preview + screenshots [OK]
+- preview + videos [OK]
+- preview + screenshots + videos [OK]
+- comment only [OK] no change since comment only
+- content + comment [OK]
+- videos + comment [OK] no content change -> Steam ignores comment
+- pagination [OK]
+
+6. delete mode
+
+ - auto-defaults OFF [OK]
+ - auto-defaults ON [OK]
+ - pagination [OK]
+ - id is set [OK]
+ - id not set [OK]
+ - screenshots + preview [OK]
+ - random params payload [OK]
+ - mode only [OK]
+ 
+7. info mode
+ 
+ - auto-defaults OFF [OK]
+ - auto-defaults ON [OK]
+ - pagination [OK]
+ - random params payload [OK]
+*/
 
 #ifdef RUN_TESTS
 #include <windows.h>

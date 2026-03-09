@@ -69,7 +69,7 @@ private:
     void ResetUpdateProgress();
 
     SteamResultPolicy InterpretSteamResult(EResult steamResult);
-    void ValidateItemId(PublishedFileId_t itemId);
+    void QueryWorkshopItemDetails(PublishedFileId_t itemId);
 
     std::function<void(WorkshopManageTask*, bool)> m_onFinished;
 
@@ -78,6 +78,10 @@ private:
     WorkshopManageAction m_workshopAction = WorkshopManageAction::Unknown;
     bool m_IsNewlyCreatedItem = false; //item created, but later failed to update, this indicates that rollback delete is required
     bool m_IsRollbackTask = false;
+
+    //these vectors are required to properly update item previews in BuildUGCUpdateRequest()
+    std::vector<size_t> m_itemImagePreviewIndices;
+    std::vector<size_t> m_itemVideoPreviewIndices;
 
     UGCUpdateHandle_t m_SteamUGCUpdateHandle = k_UGCUpdateHandleInvalid;
     SteamAPICall_t m_SubmitCallResult;

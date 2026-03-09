@@ -101,11 +101,13 @@ int main(int argc, char* argv[])
 			case WorkshopManageResult::Abort:
 				DebugLog("WorkshopManageResult::Abort");
 				ErrorMessage(LOC_WMR_TERMINATED_BY_USER);
+				PrintMessage("");
 				break;
 
 			case WorkshopManageResult::Error:
 				DebugLog("WorkshopManageResult::Error");
 				ErrorMessage(LOC_WMR_CRITICAL_ERROR);
+				PrintMessage("");
 				break;
 
 			case WorkshopManageResult::Retry:
@@ -124,7 +126,6 @@ int main(int argc, char* argv[])
 	else
 	{
 		DebugLog("mainModule.Initialize() failed");
-		ErrorMessage(LOC_STEAM_INIT_FAIL);
 	}
 
 	DebugLog("main loop complete");
@@ -175,7 +176,8 @@ bool MainModule::Initialize()
 
 	if (!SteamAPI_Init())
 	{
-		PrintMessage(LOC_STEAM_INIT_FAIL);
+		ErrorMessage(LOC_STEAM_INIT_FAIL);
+		PrintMessage("");
 		return false;
 	}
 	else
@@ -392,8 +394,7 @@ WorkshopManageAction MainModule::ParseParam(int argc, char** argv, WorkshopItem&
 			}
 
 			case WorkshopUploaderParam::UpdateComment:
-				if(manageAction == WorkshopManageAction::Modify)
-					item.SetUpdateComment(value);
+				item.SetUpdateComment(value);
 				break;
 
 			case WorkshopUploaderParam::NoConfirm:
@@ -404,8 +405,8 @@ WorkshopManageAction MainModule::ParseParam(int argc, char** argv, WorkshopItem&
 				UploaderConfig::Instance().bNoWait = ParseBool(value);
 				break;
 
-			case WorkshopUploaderParam::AutoDefaults:
-				UploaderConfig::Instance().bAutoDefaults = ParseBool(value);
+			case WorkshopUploaderParam::CreateDefaults:
+				UploaderConfig::Instance().bCreateDefaults = ParseBool(value);
 				break;
 		}
 	}
@@ -477,6 +478,11 @@ void MainModule::PrintWorkshopItemInfo(WorkshopItem& item)
 	//item description
 	PrintMessage(LOC_WII_DESCRIPTION, ConsoleTextColor::White);
 	PrintStr(item.GetDescription());
+	PrintMessage("");
+
+	//item visibility
+	PrintMessage(LOC_WII_VISIBILITY, ConsoleTextColor::White);
+	PrintStr(item.GetVisibilityString());
 	PrintMessage("");
 	
 	//item categories
@@ -639,24 +645,11 @@ WorkshopManageResult MainModule::ValidateAndSubmit(WorkshopItem&& item, Workshop
 	CreateValidationPolicy createPolicy;
 	DeleteValidationPolicy deletePolicy;
 	BaseValidationPolicy basePolicy;
-	AutoCorrectValidationPolicy autoCorrectPolicy;
 	IWorkshopValidationPolicy* itemValidationPolicy = nullptr;
-
-	//behavior matrix:
-	//action	autoDefaults	policy
-	// -------------------------------
-	//create	false			strict create
-	//create	true			autocorrect
-	//modify	false			strict
-	//modify	true			autocorrect
-	//delete	any				delete
 
 	if (action == WorkshopManageAction::Create)
 	{
-		if (UploaderConfig::Instance().bAutoDefaults)
-			itemValidationPolicy = &autoCorrectPolicy;
-		else
-			itemValidationPolicy = &createPolicy;
+		itemValidationPolicy = &createPolicy;
 	}
 	else if (action == WorkshopManageAction::Delete)
 	{
@@ -664,10 +657,7 @@ WorkshopManageResult MainModule::ValidateAndSubmit(WorkshopItem&& item, Workshop
 	}
 	else
 	{
-		if (UploaderConfig::Instance().bAutoDefaults)
-			itemValidationPolicy = &autoCorrectPolicy;
-		else
-			itemValidationPolicy = &basePolicy;
+		itemValidationPolicy = &basePolicy;
 	}
 
 	item.ValidateForSubmission(*itemValidationPolicy);

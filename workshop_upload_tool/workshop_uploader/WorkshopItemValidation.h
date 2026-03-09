@@ -134,22 +134,18 @@ public:
 
 	//title
 	void OnTitleEmpty(WorkshopItem&) override;
-	void OnTitleTooLong(WorkshopItem&) override;
 
 	//description
 	void OnDescriptionEmpty(WorkshopItem&) override;
-	void OnDescriptionTooLong(WorkshopItem&) override;
 
 	//visibility
 	void OnVisibilityNotSet(WorkshopItem&) override;
 
 	//content dir
-	void OnContentDirMissing(WorkshopItem&, const std::string&) override;
+	void OnContentDirEmpty(WorkshopItem&) override;
 
 	//preview image
 	void OnPreviewImageEmpty(WorkshopItem&) override;
-	void OnPreviewImageMissing(WorkshopItem&, const std::string&) override;
-	void OnPreviewImageInvalid(WorkshopItem&, const std::string&) override;
 
 	//screenshots
 	void OnScreenshotsEmpty(WorkshopItem&) override;
@@ -162,18 +158,30 @@ class CreateValidationPolicy : public AutoCorrectValidationPolicy
 {
 public:
 
-	//itemId
+	//itemId, ignore all
 	void OnItemIdInvalid(WorkshopItem&, const std::string&) override;
 
-	//content dir
+	//title
+	void OnTitleEmpty(WorkshopItem&) override;
+
+	//description
+	void OnDescriptionEmpty(WorkshopItem&) override;
+
+	//visibility
+	void OnVisibilityNotSet(WorkshopItem&) override;
+
+	//content dir, strict
 	void OnContentDirEmpty(WorkshopItem&) override;
 	void OnContentDirMissing(WorkshopItem&, const std::string&) override;
 	void OnContentDirHasNoFiles(WorkshopItem&, const std::string&) override;
 
-	//preview image
+	//preview image, strict
 	void OnPreviewImageEmpty(WorkshopItem&) override;
 	void OnPreviewImageMissing(WorkshopItem&, const std::string&) override;
 	void OnPreviewImageInvalid(WorkshopItem&, const std::string&) override;
+
+	//screenshots
+	void OnScreenshotsEmpty(WorkshopItem&) override;
 
 	//update comment
 	void OnUpdateCommentEmpty(WorkshopItem&) override;

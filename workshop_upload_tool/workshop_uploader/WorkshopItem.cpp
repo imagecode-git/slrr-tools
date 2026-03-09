@@ -27,16 +27,40 @@ ERemoteStoragePublishedFileVisibility WorkshopItem::GetVisibility()
 	return m_itemVisibility;
 }
 
-bool WorkshopItem::IsVisibilitySet()
+bool WorkshopItem::HasTitle() const
 {
-	return (m_itemVisibility ==
-		k_ERemoteStoragePublishedFileVisibilityPublic ||
-		k_ERemoteStoragePublishedFileVisibilityFriendsOnly ||
-		k_ERemoteStoragePublishedFileVisibilityPrivate ||
-		k_ERemoteStoragePublishedFileVisibilityUnlisted);
+	return !m_itemTitle.empty();
 }
 
-bool WorkshopItem::IsSupportedImage(const string& filePath)
+bool WorkshopItem::HasDescription() const
+{
+	return !m_itemDescription.empty();
+}
+
+bool WorkshopItem::HasVisibility() const
+{
+	return	m_itemVisibility == k_ERemoteStoragePublishedFileVisibilityPublic ||
+			m_itemVisibility == k_ERemoteStoragePublishedFileVisibilityFriendsOnly ||
+			m_itemVisibility == k_ERemoteStoragePublishedFileVisibilityPrivate ||
+			m_itemVisibility == k_ERemoteStoragePublishedFileVisibilityUnlisted;
+}
+
+bool WorkshopItem::HasCategories() const
+{
+	return !m_itemCategories.empty();
+}
+
+bool WorkshopItem::HasScreenshots() const
+{
+	return !m_itemScreenshots.empty();
+}
+
+bool WorkshopItem::HasVideoUrls() const
+{
+	return !m_itemVideoUrls.empty();
+}
+
+bool WorkshopItem::IsSupportedImage(const string& filePath) const
 {
 	if (filePath.empty())
 		return false;
@@ -52,14 +76,14 @@ bool WorkshopItem::IsSupportedImage(const string& filePath)
 			_stricmp(fileExt, kImageExtensionPng) == 0;
 }
 
-bool WorkshopItem::HasValidPreviewImage()
+bool WorkshopItem::HasValidPreviewImage() const
 {
 	const string& filePath = m_itemPreviewImagePath;
 
 	return !filePath.empty() && FileExists(filePath) && IsSupportedImage(filePath);
 }
 
-bool WorkshopItem::HasValidContentDir()
+bool WorkshopItem::HasValidContentDir() const
 {
 	return !m_itemContentDir.empty() && DirectoryExists(m_itemContentDir) && DirectoryHasFiles(m_itemContentDir);
 }
@@ -96,7 +120,7 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 		policy.OnDescriptionTooLong(*this);
 
 	//visibility
-	if (!IsVisibilitySet())
+	if (!HasVisibility())
 		policy.OnVisibilityNotSet(*this);
 
 	//content dir
@@ -130,7 +154,7 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 	}
 
 	//categories
-	if (itemCategories.empty())
+	if (!HasCategories())
 	{
 		policy.OnCategoriesEmpty(*this);
 	}
@@ -144,9 +168,9 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 	}
 
 	//screenshots
-	if (itemScreenshots.empty())
+	if (!HasScreenshots())
 	{
-		policy.OnScreenshotEmpty(*this);
+		policy.OnScreenshotsEmpty(*this);
 	}
 	else
 	{
@@ -155,19 +179,22 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 
 		for (const string& screenshot : itemScreenshots)
 		{
-			if (!FileExists(screenshot))
+			if (screenshot.empty()) //user provides multiple screenshot dirs and some of them is empty string
+			{
+				policy.OnScreenshotEmpty(*this);
+			}
+			else if (!FileExists(screenshot))
 			{
 				policy.OnScreenshotMissing(*this, screenshot);
 			}
-			else
+			else if (!IsSupportedImage(screenshot))
 			{
-				if (!IsSupportedImage(screenshot))
-					policy.OnScreenshotInvalid(*this, screenshot);
+				policy.OnScreenshotInvalid(*this, screenshot);
 			}
 		}
 	}
 	//videos
-	if (itemVideoUrls.empty())
+	if (!HasVideoUrls())
 	{
 		policy.OnVideoUrlsEmpty(*this);
 	}
@@ -179,6 +206,10 @@ void WorkshopItem::ValidateForSubmission(IWorkshopValidationPolicy& policy)
 				policy.OnVideoUrlEmpty(*this);
 		}	
 	}
+
+	//update comment
+	if (GetUpdateComment().empty())
+		policy.OnUpdateCommentEmpty(*this);
 }
 
 bool WorkshopItem::LoadScreenshotsFromDirectory(const string& directory)
@@ -240,22 +271,22 @@ void WorkshopItem::SetUpdateComment(string comment)
 	m_itemUpdateComment = comment;
 }
 
-void WorkshopItem::SetVideoUrls(std::vector<std::string>& newVideoUrls)
+void WorkshopItem::SetVideoUrls(vector<string>& newVideoUrls)
 {
 	m_itemVideoUrls = newVideoUrls;
 }
 
-void WorkshopItem::SetCategories(std::vector<std::string>& newCategories)
+void WorkshopItem::SetCategories(vector<string>& newCategories)
 {
 	m_itemCategories = newCategories;
 }
 
-void WorkshopItem::SetScreenshots(std::vector<std::string>& newScreenshots)
+void WorkshopItem::SetScreenshots(vector<string>& newScreenshots)
 {
 	m_itemScreenshots = newScreenshots;
 }
 
-const std::vector<std::string>& WorkshopItem::GetScreenshots()
+const vector<string>& WorkshopItem::GetScreenshots()
 {
 	return m_itemScreenshots;
 }
@@ -265,45 +296,51 @@ void WorkshopItem::SetVisibility(ERemoteStoragePublishedFileVisibility newVisibi
 	m_itemVisibility = newVisibility;
 }
 
-const std::string& WorkshopItem::GetTitle()
+const string& WorkshopItem::GetTitle()
 {
 	return m_itemTitle;
 }
 
-const std::string& WorkshopItem::GetDescription()
+const string& WorkshopItem::GetDescription()
 {
 	return m_itemDescription;
 }
 
-const std::string& WorkshopItem::GetContentDir()
+const string& WorkshopItem::GetContentDir()
 {
 	return m_itemContentDir;
 }
 
-const std::string& WorkshopItem::GetPreviewImagePath()
+const string& WorkshopItem::GetPreviewImagePath()
 {
 	return m_itemPreviewImagePath;
 }
 
-const std::string& WorkshopItem::GetUpdateComment()
+const string& WorkshopItem::GetUpdateComment()
 {
 	return m_itemUpdateComment;
 }
 
-const std::vector<std::string>& WorkshopItem::GetCategories()
+const vector<string>& WorkshopItem::GetCategories()
 {
 	return m_itemCategories;
 }
 
-const std::vector<std::string>& WorkshopItem::GetVideoUrls()
+const vector<string>& WorkshopItem::GetVideoUrls()
 {
 	return m_itemVideoUrls;
+}
+
+string WorkshopItem::GetVisibilityString() const
+{
+	const char* pchVisibility = EnumParamToString(m_itemVisibility, WorkshopItemVisibilityModesList, ARRAY_SIZE(WorkshopItemVisibilityModesList));
+	return string(pchVisibility);
 }
 
 void WorkshopItem::Reset()
 {
 	SetItemId(0);
-	SetVisibility(k_ERemoteStoragePublishedFileVisibilityPrivate);
+	SetVisibility((ERemoteStoragePublishedFileVisibility)-1); //sentinel
 	SetTitle("");
 	SetDescription("");
 	SetPreviewImagePath("");
@@ -322,11 +359,7 @@ void WorkshopItem::DebugDumpItemInfo()
 	DebugLog("contentDir: " + GetContentDir());
 	DebugLog("previewImagePath: " + GetPreviewImagePath());
 	DebugLog("updateComment: " + GetUpdateComment());
-
-	string strVisibility = "m_itemVisibility: ";
-	strVisibility += EnumParamToString(m_itemVisibility, WorkshopItemVisibilityModesList, ARRAY_SIZE(WorkshopItemVisibilityModesList));
-	
-	DebugLog(strVisibility);
+	DebugLog("itemVisibility: " + GetVisibilityString());
 	DebugLog("");
 
 	DebugLog("screenshots:");

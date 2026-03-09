@@ -57,7 +57,7 @@ Parameters:
 -item-id: workshop item ID (unsigned 64-bit integer);
 -title: item title (max 128 bytes);
 -description: item description (max 8192 bytes);
--visibility: "public", "private", "friends";
+-visibility: "public", "private", "friends", "unlisted";
 -category: comma-separated category list;
 -preview: relative path to the item preview image file, JPG or PNG, max 1024 kb;
 -screenshots: relative path to the folder containing screenshots (max 50 screenshots, JPG or PNG, max 1024 kb per file);
@@ -65,7 +65,7 @@ Parameters:
 -comment: release notes (modify mode only);
 -no-confirm: skip confirmation prompt (true/false);
 -no-wait: skip "Press any key" on exit (true/false);
--auto-defaults: automatic correction of missing or invalid workshop item fields before submission.
+-create-defaults: this option is only for create mode; automatic correction of missing or invalid workshop item fields before submission.
 
 Important: It's NOT recommended to use non-latin symbols in file or folder names, application may not identify them or just crash.
 Use only english names to avoid errors. Also make sure that application has no limitations on connecting to the internet before run.

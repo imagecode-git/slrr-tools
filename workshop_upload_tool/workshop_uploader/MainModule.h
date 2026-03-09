@@ -57,7 +57,7 @@ enum class WorkshopUploaderParam
 	UpdateComment,
 	NoConfirm, //UploaderConfig.bNoConfirm - no UserPrompt() to confirm input params
 	NoWait, //UploaderConfig.bNoWait - no "Press any key" to allow batch executions
-	AutoDefaults, //UploaderConfig.bAutoDefaults - auto-correct policy that fills default values if they're invalid or not set
+	CreateDefaults, //UploaderConfig.bCreateDefaults - auto-correct policy for create mode, it fills default values if they're invalid or not set
 	Empty
 };
 
@@ -82,9 +82,9 @@ static const ParamEntry kParamTable[] =
 	{ "-content",		WorkshopUploaderParam::FilesPath },
 	{ "-comment",		WorkshopUploaderParam::UpdateComment },
 	
-	{ "-no-confirm",	WorkshopUploaderParam::NoConfirm },
-	{ "-no-wait",		WorkshopUploaderParam::NoWait },
-	{ "-auto-defaults",	WorkshopUploaderParam::AutoDefaults },
+	{ "-no-confirm",		WorkshopUploaderParam::NoConfirm },
+	{ "-no-wait",			WorkshopUploaderParam::NoWait },
+	{ "-create-defaults",	WorkshopUploaderParam::CreateDefaults },
 	{ "", WorkshopUploaderParam::Empty },
 };
 
