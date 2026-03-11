@@ -83,7 +83,24 @@ int main(int argc, char* argv[])
 	{
 		WorkshopItem item;
 		WorkshopManageResult manageResult;
-		WorkshopManageAction manageAction = mainModule.ParseParam(argc, argv, item);
+		//WorkshopManageAction manageAction = mainModule.ParseParam(argc, argv, item);
+
+		vector<pair<string, string>> targetParams;
+		vector<pair<string, string>> iniParams = mainModule.LoadIniConfig();
+		vector<pair<string, string>> cliParams = mainModule.ParseCommandLine(argc, argv);
+
+		if (!iniParams.empty())
+		{
+			DebugLog("using parameters from " + string(CONFIG_INI_FILENAME));
+			targetParams = iniParams;
+		}
+		else
+		{
+			DebugLog("using CLI params");
+			targetParams = cliParams;
+		}
+
+		WorkshopManageAction manageAction = mainModule.ApplyParams(targetParams, item);
 
 		do
 		{
@@ -279,135 +296,231 @@ bool MainModule::IsAlive()
 	return !m_bReadyToTerminate;
 }
 
+vector<pair<string, string>> MainModule::ParseCommandLine(int argc, char** argv)
+{
+	vector<pair<string, string>> params;
+
+	for (int i = 1; i < argc; i++)
+	{
+		string key = argv[i];
+
+		if (i + 1 >= argc)
+		{
+			PrintMessage(LOC_PARAM_MISSING_VALUE);
+			break;
+		}
+
+		string value = argv[++i];
+
+		params.emplace_back(key, value);
+	}
+
+	return params;
+}
+
+vector<pair<string, string>> MainModule::LoadIniConfig()
+{
+	vector<pair<string, string>> params;
+
+	INIReader reader(CONFIG_INI_FILENAME);
+
+	//silently return if config file is empty or unused
+	if (reader.ParseError() != 0)
+		return params;
+
+	PrintMessage(string(LOC_READING_CONFIG_FILE) + string(CONFIG_INI_FILENAME));
+	PrintMessage("");
+
+	auto push = [&](WorkshopUploaderParam param, const string& value)
+	{
+		const char* key = GetParamKey(param);
+
+		if (!value.empty())
+			params.emplace_back(key, value);
+	};
+
+	//workshop item
+	string secItem = "item";
+	push(WorkshopUploaderParam::Title,			reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Title), ""));
+	push(WorkshopUploaderParam::Description,	reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Description), ""));
+	push(WorkshopUploaderParam::Visibility,		reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Visibility), ""));
+	push(WorkshopUploaderParam::Category,		reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Category), ""));
+	push(WorkshopUploaderParam::PreviewImage,	reader.Get(secItem, GetParamKey(WorkshopUploaderParam::PreviewImage), ""));
+	push(WorkshopUploaderParam::ScreenshotPath,	reader.Get(secItem, GetParamKey(WorkshopUploaderParam::ScreenshotPath), ""));
+	push(WorkshopUploaderParam::VideoUrl,		reader.Get(secItem, GetParamKey(WorkshopUploaderParam::VideoUrl), ""));
+	push(WorkshopUploaderParam::FilesPath,		reader.Get(secItem, GetParamKey(WorkshopUploaderParam::FilesPath), ""));
+	push(WorkshopUploaderParam::UpdateComment,	reader.Get(secItem, GetParamKey(WorkshopUploaderParam::UpdateComment), ""));
+
+	//uploader
+	string secUploader = "uploader";
+	push(WorkshopUploaderParam::Action, reader.Get(secUploader, GetParamKey(WorkshopUploaderParam::Action), ""));
+
+	UploaderConfig::Instance().bNoConfirm =
+		reader.GetBoolean(secUploader, GetParamKey(WorkshopUploaderParam::NoConfirm), false);
+
+	UploaderConfig::Instance().bCreateDefaults =
+		reader.GetBoolean(secUploader, GetParamKey(WorkshopUploaderParam::CreateDefaults), false);
+
+	UploaderConfig::Instance().bNoWait =
+		reader.GetBoolean(secUploader, GetParamKey(WorkshopUploaderParam::NoWait), false);
+
+	bool bDebugPreviewParams = false;
+	if (bDebugPreviewParams)
+	{
+		PrintMessage(LINE_SEPARATOR, ConsoleTextColor::Cyan);
+		PrintMessage("LoadIniConfig()", ConsoleTextColor::Cyan);
+		PrintMessage("");
+
+		for (const auto& p : params)
+			PrintMessage(p.first + " = " + p.second, ConsoleTextColor::Cyan);
+
+		PrintMessage(LINE_SEPARATOR, ConsoleTextColor::Cyan);
+	}
+
+	return params;
+}
+
 WorkshopUploaderParam MainModule::ResolveParam(const string& arg)
 {
 	for (const auto& entry : kParamTable)
 	{
+		if (!entry.key)
+			break;
+
 		if (arg == entry.key)
 			return entry.param;
 	}
-
+	
 	return WorkshopUploaderParam::Empty;
 }
 
-//parse input params
-WorkshopManageAction MainModule::ParseParam(int argc, char** argv, WorkshopItem& item)
+const char* MainModule::GetParamKey(WorkshopUploaderParam param)
+{
+	for (const auto& entry : kParamTable)
+	{
+		if (entry.param == WorkshopUploaderParam::Empty)
+			break;
+
+		if (entry.param == param)
+			return entry.key;
+	}
+
+	return nullptr;
+}
+
+WorkshopManageAction MainModule::ApplyParams(const vector<pair<string, string>>& params, WorkshopItem& item)
 {
 	WorkshopManageAction manageAction = WorkshopManageAction::Unknown;
 
-	for (int i = 1; i < argc; i++) //skipping argv[0]
+	for (const auto& p : params)
 	{
-		const string arg = argv[i];
+		const string& arg = p.first;
+		const string& value = p.second;
+
 		WorkshopUploaderParam param = ResolveParam(arg);
 
 		if (param == WorkshopUploaderParam::Empty)
 		{
-			DebugLog("ParseParam: unknown parameter " + arg);
+			DebugLog("ApplyParams: unknown parameter " + arg);
 			continue;
 		}
 
-		//all known params require a value
-		if (i + 1 >= argc)
-			PrintMessage(LOC_PARAM_MISSING_VALUE);
-
-		string value = argv[++i];
-		
 		switch (param)
 		{
-			case WorkshopUploaderParam::Action:
-			{
-				if(!ResolveEnumParam(value, WorkshopUploaderActionList, ARRAY_SIZE(WorkshopUploaderActionList), manageAction))
-					manageAction = WorkshopManageAction::Unknown;
+		case WorkshopUploaderParam::Action:
+		{
+			if (!ResolveEnumParam(value, WorkshopUploaderActionList, ARRAY_SIZE(WorkshopUploaderActionList), manageAction))
+				manageAction = WorkshopManageAction::Unknown;
 
-				break;
-			}
+			break;
+		}
 
-			case WorkshopUploaderParam::ItemId:
-			{
-				uint64 itemIdFromStr = 0;
+		case WorkshopUploaderParam::ItemId:
+		{
+			uint64 itemIdFromStr = 0;
 
-				if (!ParseUint64(value, itemIdFromStr))
-					WarningMessage(LOC_INCORRECT_ITEM_ID + value); //don't brick the uploader, just default to 0 as AutoCorrectValidationPolicy would do
+			if (!ParseUint64(value, itemIdFromStr))
+				WarningMessage(LOC_INCORRECT_ITEM_ID + value); //don't brick the uploader, just default to 0 as AutoCorrectValidationPolicy would do
 
-				item.SetItemId(static_cast<PublishedFileId_t>(itemIdFromStr));
-				break;
-			}
+			item.SetItemId(static_cast<PublishedFileId_t>(itemIdFromStr));
+			break;
+		}
 
-			case WorkshopUploaderParam::Title:
-				item.SetTitle(value);
-				break;
+		case WorkshopUploaderParam::Title:
+			item.SetTitle(value);
+			break;
 
-			case WorkshopUploaderParam::Description:
-				item.SetDescription(value);
-				break;
+		case WorkshopUploaderParam::Description:
+			item.SetDescription(value);
+			break;
 
-			case WorkshopUploaderParam::Visibility:
-			{
-				ERemoteStoragePublishedFileVisibility itemVisibility;
-				if (!ResolveEnumParam(value, WorkshopItemVisibilityModesList, ARRAY_SIZE(WorkshopItemVisibilityModesList), itemVisibility))
-					itemVisibility = k_ERemoteStoragePublishedFileVisibilityPrivate;
+		case WorkshopUploaderParam::Visibility:
+		{
+			ERemoteStoragePublishedFileVisibility itemVisibility;
+			if (!ResolveEnumParam(value, WorkshopItemVisibilityModesList, ARRAY_SIZE(WorkshopItemVisibilityModesList), itemVisibility))
+				itemVisibility = k_ERemoteStoragePublishedFileVisibilityPrivate;
 
-				item.SetVisibility(itemVisibility);
-				break;
-			}
+			item.SetVisibility(itemVisibility);
+			break;
+		}
 
-			case WorkshopUploaderParam::Category:
-			{
-				vector<string> categoriesList;
-				Tokenize(value, categoriesList, PARAM_DELIM);
-				item.SetCategories(categoriesList);
+		case WorkshopUploaderParam::Category:
+		{
+			vector<string> categoriesList;
+			Tokenize(value, categoriesList, PARAM_DELIM);
+			item.SetCategories(categoriesList);
 
-				break;
-			}
+			break;
+		}
 
-			case WorkshopUploaderParam::PreviewImage:
-			{
-				string fullPath = ResolveRelPath(value);
-				item.SetPreviewImagePath(fullPath);
-				break;
-			}
+		case WorkshopUploaderParam::PreviewImage:
+		{
+			string fullPath = ResolveRelPath(value);
+			item.SetPreviewImagePath(fullPath);
+			break;
+		}
 
-			case WorkshopUploaderParam::ScreenshotPath:
-			{
-				string fullPath = ResolveRelPath(value);
-				item.LoadScreenshotsFromDirectory(fullPath);
-				break;
-			}
+		case WorkshopUploaderParam::ScreenshotPath:
+		{
+			string fullPath = ResolveRelPath(value);
+			item.LoadScreenshotsFromDirectory(fullPath);
+			break;
+		}
 
-			case WorkshopUploaderParam::VideoUrl:
-			{
-				vector<string> videoUrls;
-				Tokenize(value, videoUrls, PARAM_DELIM); //split URL's into tokens
+		case WorkshopUploaderParam::VideoUrl:
+		{
+			vector<string> videoUrls;
+			Tokenize(value, videoUrls, PARAM_DELIM); //split URL's into tokens
 
-				for (string& url : videoUrls)
-					url = ParseVideoUrl(url); //Steam only accepts ID's of YouTube videos
+			for (string& url : videoUrls)
+				url = ParseVideoUrl(url); //Steam only accepts ID's of YouTube videos
 
-				item.SetVideoUrls(move(videoUrls));
-				break;
-			}
+			item.SetVideoUrls(move(videoUrls));
+			break;
+		}
 
-			case WorkshopUploaderParam::FilesPath:
-			{
-				string fullPath = ResolveRelPath(value);
-				item.SetContentDir(fullPath);
-				break;
-			}
+		case WorkshopUploaderParam::FilesPath:
+		{
+			string fullPath = ResolveRelPath(value);
+			item.SetContentDir(fullPath);
+			break;
+		}
 
-			case WorkshopUploaderParam::UpdateComment:
-				item.SetUpdateComment(value);
-				break;
+		case WorkshopUploaderParam::UpdateComment:
+			item.SetUpdateComment(value);
+			break;
 
-			case WorkshopUploaderParam::NoConfirm:
-				UploaderConfig::Instance().bNoConfirm = ParseBool(value);
-				break;
+		case WorkshopUploaderParam::NoConfirm:
+			UploaderConfig::Instance().bNoConfirm = ParseBool(value);
+			break;
 
-			case WorkshopUploaderParam::NoWait:
-				UploaderConfig::Instance().bNoWait = ParseBool(value);
-				break;
+		case WorkshopUploaderParam::NoWait:
+			UploaderConfig::Instance().bNoWait = ParseBool(value);
+			break;
 
-			case WorkshopUploaderParam::CreateDefaults:
-				UploaderConfig::Instance().bCreateDefaults = ParseBool(value);
-				break;
+		case WorkshopUploaderParam::CreateDefaults:
+			UploaderConfig::Instance().bCreateDefaults = ParseBool(value);
+			break;
 		}
 	}
 
@@ -415,17 +528,19 @@ WorkshopManageAction MainModule::ParseParam(int argc, char** argv, WorkshopItem&
 		manageAction != WorkshopManageAction::Info &&
 		manageAction != WorkshopManageAction::Delete)
 	{
+		bool bSuppressWarnings = (manageAction == WorkshopManageAction::Modify);
+
 		PrintMessage("");
 		PrintMessage(LOC_PARAMS_PARSED, ConsoleTextColor::White);
 		PrintMessage(LINE_SEPARATOR);
-		PrintWorkshopItemInfo(item);
+		PrintWorkshopItemInfo(item, bSuppressWarnings);
 		PrintMessage(LINE_SEPARATOR);
 	}
 
 	return manageAction;
 }
 
-void MainModule::PrintWorkshopItemInfo(WorkshopItem& item)
+void MainModule::PrintWorkshopItemInfo(WorkshopItem& item, bool bSuppressWarnings)
 {
 	auto JoinCategories = [](const vector<string> cats)
 	{
@@ -444,16 +559,16 @@ void MainModule::PrintWorkshopItemInfo(WorkshopItem& item)
 	};
 
 	//prints "<not set>" if no value
-	auto PrintStr = [](const string& str)
+	auto PrintStr = [&](const string& str)
 	{
-		if (str.length())
+		if (!str.empty())
 			PrintMessage(str);
 		else
 			WarningMessage(LOC_NOT_SET);
 	};
 
 	//prints "<not set>" if vector is empty
-	auto PrintStrVector = [](const vector<string> strVec)
+	auto PrintStrVector = [&](const vector<string>& strVec)
 	{
 		if (strVec.empty())
 		{
@@ -461,7 +576,7 @@ void MainModule::PrintWorkshopItemInfo(WorkshopItem& item)
 			return;
 		}
 
-		for (string str : strVec)
+		for (const string& str : strVec)
 			PrintMessage(str);
 	};
 

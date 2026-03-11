@@ -62,6 +62,15 @@ void WorkshopManageTask::ContinueAfterValidation()
 	{
 		case WorkshopManageAction::Modify:
 		{
+			if (!m_workshopItem.HasUpdateFields())
+			{
+				PrintMessage("");
+				ErrorMessage(LOC_NOTHING_TO_UPDATE);
+
+				NotifyFinished(false);
+				return;
+			}
+
 			SetCursorVisible(false);
 
 			BuildUGCUpdateRequest();

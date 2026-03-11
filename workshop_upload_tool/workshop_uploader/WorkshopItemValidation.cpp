@@ -291,6 +291,10 @@ void CreateValidationPolicy::OnPreviewImageInvalid(WorkshopItem& item, const str
 
 void CreateValidationPolicy::OnScreenshotsEmpty(WorkshopItem& item)
 {
+#ifdef NO_SCREENSHOTS_AUTO_DEFAULTS
+    BaseValidationPolicy::OnScreenshotsEmpty(item);
+    return;
+#else
     if (!UploaderConfig::Instance().bCreateDefaults)
     {
         BaseValidationPolicy::OnScreenshotsEmpty(item);
@@ -298,6 +302,7 @@ void CreateValidationPolicy::OnScreenshotsEmpty(WorkshopItem& item)
     }
 
     AutoCorrectValidationPolicy::OnScreenshotsEmpty(item);
+#endif
 }
 
 void CreateValidationPolicy::OnUpdateCommentEmpty(WorkshopItem& item)

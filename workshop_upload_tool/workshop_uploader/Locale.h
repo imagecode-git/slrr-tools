@@ -31,6 +31,7 @@
 #define LOC_OPERATION_BEGIN			"Begin manage workshop item "
 #define LOC_OPERATION_SUCCESS		"Operation completed successfully."
 #define LOC_OPERATION_FAIL			"Operation failed."
+#define LOC_NOTHING_TO_UPDATE		"Nothing to update, operation terminated."
 #define LOC_FAILED_TO_CREATE_ITEM	"Failed to create workshop item."
 #define LOC_FAILED_TO_UPDATE_ITEM	"Failed to update workshop item."
 #define LOC_FAILED_TO_VALIDATE_ITEM	"Failed to validate workshop item ID."
@@ -65,6 +66,7 @@
 #define LOC_INVALID_SELECTION		"Invalid selection. Try again?"
 #define LOC_NOT_SET					"<not set>"
 #define LOC_AUTO_CORRECT			"[auto-correct] "
+#define LOC_READING_CONFIG_FILE		"Reading configuration file "
 
 //WorkshopManageResult
 #define LOC_WMR_TERMINATED_BY_USER	"The operation has been terminated by user."

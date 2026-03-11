@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Parser">
+      <UniqueIdentifier>{7477d9c0-da17-4010-9814-a15afda5aab5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Parser\cpp">
+      <UniqueIdentifier>{fd2789fd-99d0-44f9-8333-be3adf2807c3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -45,6 +51,12 @@
     <ClInclude Include="WorkshopItemValidation.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="parser\ini.h">
+      <Filter>Parser</Filter>
+    </ClInclude>
+    <ClInclude Include="parser\cpp\INIReader.h">
+      <Filter>Parser\cpp</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -67,6 +79,12 @@
     </ClCompile>
     <ClCompile Include="UnitTests.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="parser\ini.c">
+      <Filter>Parser</Filter>
+    </ClCompile>
+    <ClCompile Include="parser\cpp\INIReader.cpp">
+      <Filter>Parser\cpp</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

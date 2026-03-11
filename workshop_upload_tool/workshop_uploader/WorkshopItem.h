@@ -74,6 +74,7 @@ public:
 	bool LoadScreenshotsFromDirectory(const std::string& directory);
 	
 	//validation
+	bool HasUpdateFields() const;
 	bool IsSupportedImage(const std::string& filePath) const;
 	bool HasTitle() const;
 	bool HasDescription() const;

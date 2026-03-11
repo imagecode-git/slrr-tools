@@ -53,19 +53,80 @@ Rules:
 
 Parameters:
 
--mode: uploader mode, accepted values are "create", "modify", "delete", "info";
--item-id: workshop item ID (unsigned 64-bit integer);
--title: item title (max 128 bytes);
--description: item description (max 8192 bytes);
--visibility: "public", "private", "friends", "unlisted";
--category: comma-separated category list;
--preview: relative path to the item preview image file, JPG or PNG, max 1024 kb;
--screenshots: relative path to the folder containing screenshots (max 50 screenshots, JPG or PNG, max 1024 kb per file);
--content: relative path to the content directory;
--comment: release notes (modify mode only);
--no-confirm: skip confirmation prompt (true/false);
--no-wait: skip "Press any key" on exit (true/false);
--create-defaults: this option is only for create mode; automatic correction of missing or invalid workshop item fields before submission.
+The uploader accepts parameters from two sources:
+
+1. Command-line parameters
+You can run the uploader from cmd.exe or a .bat file and provide parameters directly.
+
+Example:
+workshop_uploader -mode create -title "My workshop item"
+
+Both short and verbose forms are supported:
+
+-m		or	-mode		(operation mode)
+-t		or	-title		(item title)
+
+2. Configuration file
+Parameters can also be defined in the file: workshop_uploader_config.ini
+In the this file, parameter names are written without the leading dash (-):
+
+mode = create
+title = My workshop item
+preview = workshop_preview.jpg
+
+Parameter priority:
+
+If both sources are present, the uploader uses the following priority:
+
+	1. Configuration file parameters
+	2. Command-line parameters
+	
+If the configuration file contains at least one parameter, command-line parameters are ignored.
+If the file has no parameters, the uploader automatically uses the command-line parameters instead.
+
+Parameter list:
+
+-mode: (mode, -m)
+uploader mode, accepted values are "create", "modify", "delete", "info";
+
+-item-id: (item-id, -id)
+workshop item ID (unsigned 64-bit integer);
+
+-title: (title, -t)
+item title (max 128 bytes);
+
+-description: (description, -d)
+item description (max 8192 bytes);
+
+-visibility: (visibility, -v)
+"public", "private", "friends", "unlisted";
+
+-category: (category, -c)
+comma-separated category list;
+
+-preview: (preview, -p)
+relative path to the item preview image file, JPG or PNG, max 1024 kb;
+
+-screenshots: (screenshots, -sc)
+relative path to the folder containing screenshots (max 50 screenshots, JPG or PNG, max 1024 kb per file);
+
+-video-urls: (video-urls, -yt)
+comma-separated YouTube video URL's list;
+
+-content: (content, -f)
+relative path to the content directory;
+
+-comment: (comment, -uc)
+release notes (modify mode only);
+
+-no-confirm:  (no-confirm, -nc)
+skip confirmation prompt (true/false);
+
+-no-wait: (no-wait, -nw)
+skip "Press any key" on exit (true/false);
+
+-create-defaults: (create-defaults, -cdf)
+this option is only for create mode; automatic correction of missing or invalid workshop item fields before submission.
 
 Important: It's NOT recommended to use non-latin symbols in file or folder names, application may not identify them or just crash.
 Use only english names to avoid errors. Also make sure that application has no limitations on connecting to the internet before run.
@@ -123,3 +184,25 @@ Disable interactive prompts and "Press any key" to use the uploader in a scripte
 -no-confirm "true"
 -no-wait "true"
 
+Additional options:
+
+This option is available only in create mode:
+
+-create-defaults "true"
+
+When enabled, the uploader applies an auto-correct policy that fills in missing parameters with default values.
+This allows creating a workshop item even if some parameters were not explicitly provided.
+If this option is disabled, all required parameters must be supplied by the user.
+
+Modify mode:
+
+In modify mode, the uploader supports partial updates.
+You may specify only the parameters that need to be changed. All other item properties remain unchanged.
+
+Example:
+
+-mode modify
+-title "Updated title"
+
+In this example only the item title will be updated.
+Warnings about parameters that are not set are suppressed in modify mode, since missing values are expected when performing partial updates.

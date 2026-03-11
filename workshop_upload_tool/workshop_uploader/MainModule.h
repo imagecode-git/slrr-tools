@@ -7,6 +7,7 @@
 #define UGC_QUERY_PAGE_SIZE 50
 
 #define DEBUG_LOG_FILENAME "debug.log"
+#define CONFIG_INI_FILENAME "workshop_uploader_config.ini"
 
 #define PARAM_DELIM ", " //delimiters of cmdline params
 
@@ -29,6 +30,8 @@
 
 #include "steam/steam_api.h"
 #pragma comment(lib, "steam/steam_api")
+
+#include "parser/cpp/INIReader.h"
 
 #ifdef _DEBUG
 //memleaks detection, call _CrtDumpMemoryLeaks() to dump all leaks to debug output
@@ -70,21 +73,66 @@ struct ParamEntry
 //mapping table for ResolveParam()
 static const ParamEntry kParamTable[] =
 {
+	//"mode":	ini config alias
+	//"-mode"	long verbose CLI alias
+	//"-m":		short CLI alias
+
+	{ "mode",			WorkshopUploaderParam::Action },
 	{ "-mode",			WorkshopUploaderParam::Action },
+	{ "-m",				WorkshopUploaderParam::Action },
+
+	{ "item-id",		WorkshopUploaderParam::ItemId },
 	{ "-item-id",		WorkshopUploaderParam::ItemId },
+	{ "-id",			WorkshopUploaderParam::ItemId },
+
+	{ "title",			WorkshopUploaderParam::Title },
 	{ "-title",			WorkshopUploaderParam::Title },
+	{ "-t",				WorkshopUploaderParam::Title },
+
+	{ "description",	WorkshopUploaderParam::Description },
 	{ "-description",	WorkshopUploaderParam::Description },
+	{ "-d",				WorkshopUploaderParam::Description },
+
+	{ "visibility",		WorkshopUploaderParam::Visibility },
 	{ "-visibility",	WorkshopUploaderParam::Visibility },
+	{ "-v",				WorkshopUploaderParam::Visibility },
+
+	{ "category",		WorkshopUploaderParam::Category },
 	{ "-category",		WorkshopUploaderParam::Category },
+	{ "-c",				WorkshopUploaderParam::Category },
+
+	{ "preview",		WorkshopUploaderParam::PreviewImage },
 	{ "-preview",		WorkshopUploaderParam::PreviewImage },
+	{ "-p",				WorkshopUploaderParam::PreviewImage },
+
+	{ "screenshots",	WorkshopUploaderParam::ScreenshotPath },
 	{ "-screenshots",	WorkshopUploaderParam::ScreenshotPath },
+	{ "-sc",			WorkshopUploaderParam::ScreenshotPath },
+
+	{ "video-urls",		WorkshopUploaderParam::VideoUrl },
 	{ "-video-urls",	WorkshopUploaderParam::VideoUrl },
+	{ "-yt",			WorkshopUploaderParam::VideoUrl },
+
+	{ "content",		WorkshopUploaderParam::FilesPath },
 	{ "-content",		WorkshopUploaderParam::FilesPath },
+	{ "-f",				WorkshopUploaderParam::FilesPath },
+
+	{ "comment",		WorkshopUploaderParam::UpdateComment },
 	{ "-comment",		WorkshopUploaderParam::UpdateComment },
+	{ "-uc",			WorkshopUploaderParam::UpdateComment },
 	
-	{ "-no-confirm",		WorkshopUploaderParam::NoConfirm },
-	{ "-no-wait",			WorkshopUploaderParam::NoWait },
+	{ "no-confirm",		WorkshopUploaderParam::NoConfirm },
+	{ "-no-confirm",	WorkshopUploaderParam::NoConfirm },
+	{ "-nc",			WorkshopUploaderParam::NoConfirm },
+
+	{ "no-wait",		WorkshopUploaderParam::NoWait },
+	{ "-no-wait",		WorkshopUploaderParam::NoWait },
+	{ "-nw",			WorkshopUploaderParam::NoWait },
+
+	{ "create-defaults",	WorkshopUploaderParam::CreateDefaults },
 	{ "-create-defaults",	WorkshopUploaderParam::CreateDefaults },
+	{ "-cdf",				WorkshopUploaderParam::CreateDefaults },
+
 	{ "", WorkshopUploaderParam::Empty },
 };
 
@@ -105,13 +153,18 @@ public:
 	void	WaitForExit();
 	void	Run();
 	bool	IsAlive();
+	
+	//input data
+	vector<pair<string, string>> ParseCommandLine(int argc, char** argv);
+	vector<pair<string, string>> LoadIniConfig();
 
 	//parameter handling
-	WorkshopManageAction	ParseParam(int argc, char** argv, WorkshopItem& item); //parse parameter from .bat file
+	WorkshopManageAction	ApplyParams(const vector<pair<string, string>>& params, WorkshopItem& item);
 	WorkshopUploaderParam	ResolveParam(const string& arg); //resolve parameter with a mapping table to find a corresponding WorkshopUploaderParam
+	const char*				GetParamKey(WorkshopUploaderParam param); //get a matching WorkshopUploaderParam as const char*
 	
 	//information requests
-	void	PrintWorkshopItemInfo(WorkshopItem& item);
+	void	PrintWorkshopItemInfo(WorkshopItem& item, bool bSuppressWarnings = false);
 	void	PrintInitialUserInfo();
 	void	PrintPaginationControls();
 	void	RequestPublishedWorkshopItems();

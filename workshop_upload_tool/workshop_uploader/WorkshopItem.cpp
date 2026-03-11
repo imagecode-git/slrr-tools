@@ -60,6 +60,29 @@ bool WorkshopItem::HasVideoUrls() const
 	return !m_itemVideoUrls.empty();
 }
 
+bool WorkshopItem::HasUpdateFields() const
+{
+	using Fn = bool (WorkshopItem::*)() const;
+
+	static const Fn checks[] =
+	{
+		&WorkshopItem::HasTitle,
+		&WorkshopItem::HasDescription,
+		&WorkshopItem::HasVisibility,
+		&WorkshopItem::HasValidContentDir,
+		&WorkshopItem::HasValidPreviewImage,
+		&WorkshopItem::HasCategories,
+		&WorkshopItem::HasScreenshots,
+		&WorkshopItem::HasVideoUrls
+	};
+
+	for (auto fn : checks)
+		if ((this->*fn)())
+			return true;
+
+	return false;
+}
+
 bool WorkshopItem::IsSupportedImage(const string& filePath) const
 {
 	if (filePath.empty())

@@ -62,7 +62,7 @@ bool ResolveEnumParam(const std::string& param, const EnumStringPair<Enum>* list
 }
 
 template <typename Enum>
-const char* EnumParamToString(Enum value, const EnumStringPair<Enum>* list, size_t size, const char* fallback = "Unknown") //always have to pass size here due to ARRAY_SIZE macro restrictions
+const char* EnumParamToString(Enum value, const EnumStringPair<Enum>* list, size_t size, const char* fallback = "") //always have to pass size here due to ARRAY_SIZE macro restrictions
 {
 	for (size_t i = 0; i < size; ++i)
 	{

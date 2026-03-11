@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm> //any_of
 
+#define NO_SCREENSHOTS_AUTO_DEFAULTS //if defined, no specific auto-defaults behavior for undefined screenshots dir
+
 class WorkshopItem; //forward declaration
 
 struct WorkshopItemValidationMessage
