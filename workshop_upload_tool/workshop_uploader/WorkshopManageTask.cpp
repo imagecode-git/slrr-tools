@@ -503,6 +503,13 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 	else
 	{
 		CSteamID owner(ugcDetails.m_ulSteamIDOwner);
+
+		if (!owner.IsValid())
+		{
+			bSuccess = false;
+			userMessage = LOC_FAILED_TO_VALIDATE_ITEM;
+		}
+		
 		AccountID_t ownerAccountId = owner.GetAccountID();
 		AccountID_t currentAccountId = SteamUser()->GetSteamID().GetAccountID();
 
@@ -512,8 +519,15 @@ void WorkshopManageTask::OnWorkshopItemDetailsQueryCompleted(SteamUGCQueryComple
 			userMessage = LOC_FAILED_TO_VALIDATE_ITEM;
 		} else if (ownerAccountId != currentAccountId) //item owners must match
 		{
-			bSuccess = false;
 			userMessage = LOC_IIV_WRONG_USER;
+		}
+
+		AppId_t appId = SteamUtils()->GetAppID();
+
+		if (ugcDetails.m_nConsumerAppID != appId)
+		{
+			bSuccess = false;
+			userMessage = LOC_IIV_WRONG_APP;
 		}
 	}
 

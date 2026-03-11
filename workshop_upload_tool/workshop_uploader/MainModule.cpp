@@ -83,7 +83,6 @@ int main(int argc, char* argv[])
 	{
 		WorkshopItem item;
 		WorkshopManageResult manageResult;
-		//WorkshopManageAction manageAction = mainModule.ParseParam(argc, argv, item);
 
 		vector<pair<string, string>> targetParams;
 		vector<pair<string, string>> iniParams = mainModule.LoadIniConfig();

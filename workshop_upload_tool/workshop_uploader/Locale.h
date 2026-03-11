@@ -111,7 +111,8 @@
 //workshop itemId validation messages
 #define LOC_IIV_ITEM_DOES_NOT_EXIST	"Workshop item with the specified item ID does not exist."
 #define LOC_IIV_ITEM_DETAILS_FAIL	"Failed to read details of this workshop item."
-#define LOC_IIV_WRONG_USER			"Workshop item ID belongs to another user."
+#define LOC_IIV_WRONG_USER			"Workshop item owner differs from current user."
+#define LOC_IIV_WRONG_APP			"Workshop item belongs to another Steam app."
 #define LOC_IIV_ITEM_ID_INCORRECT	"Incorrect Workshop item ID."
 
 //workshop item update status
