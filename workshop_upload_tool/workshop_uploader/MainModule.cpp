@@ -88,6 +88,7 @@ int main(int argc, char* argv[])
 		vector<pair<string, string>> iniParams = mainModule.LoadIniConfig();
 		vector<pair<string, string>> cliParams = mainModule.ParseCommandLine(argc, argv);
 
+		//might be better to merge the parameters instead
 		if (!iniParams.empty())
 		{
 			DebugLog("using parameters from " + string(CONFIG_INI_FILENAME));
@@ -340,6 +341,7 @@ vector<pair<string, string>> MainModule::LoadIniConfig()
 
 	//workshop item
 	string secItem = "item";
+	push(WorkshopUploaderParam::ItemId,			reader.Get(secItem, GetParamKey(WorkshopUploaderParam::ItemId), ""));
 	push(WorkshopUploaderParam::Title,			reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Title), ""));
 	push(WorkshopUploaderParam::Description,	reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Description), ""));
 	push(WorkshopUploaderParam::Visibility,		reader.Get(secItem, GetParamKey(WorkshopUploaderParam::Visibility), ""));
@@ -761,6 +763,8 @@ WorkshopManageResult MainModule::ValidateAndSubmit(WorkshopItem&& item, Workshop
 	BaseValidationPolicy basePolicy;
 	IWorkshopValidationPolicy* itemValidationPolicy = nullptr;
 
+	bool bSuppressWarnings = (action == WorkshopManageAction::Modify); //no policy warnings in modify mode
+
 	if (action == WorkshopManageAction::Create)
 	{
 		itemValidationPolicy = &createPolicy;
@@ -804,7 +808,7 @@ WorkshopManageResult MainModule::ValidateAndSubmit(WorkshopItem&& item, Workshop
 		return WorkshopManageResult::Error;
 	}
 
-	if (itemValidationPolicy->HasWarnings())
+	if (itemValidationPolicy->HasWarnings() && !bSuppressWarnings)
 	{
 		DebugLog("itemValidationPolicy has warnings:");
 		DebugLog("");
